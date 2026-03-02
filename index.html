@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BasketPro PRO - NBA Real-Time</title>
+  <title>BasketPro - NBA & Basketball PRO</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -114,10 +114,7 @@
       transition: all 0.2s;
     }
 
-    .nav-btn:hover {
-      background: var(--card-hover);
-    }
-
+    .nav-btn:hover { background: var(--card-hover); }
     .nav-btn.active {
       background: var(--orange);
       color: white;
@@ -151,7 +148,6 @@
     }
 
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-
     .status-dot.loading { background: var(--yellow); }
     .status-dot.error { background: var(--red); }
 
@@ -169,9 +165,7 @@
       transition: all 0.2s;
     }
 
-    .theme-btn:hover {
-      transform: scale(1.05);
-    }
+    .theme-btn:hover { transform: scale(1.05); }
 
     .main {
       max-width: 1600px;
@@ -179,7 +173,7 @@
       padding: 24px;
     }
 
-    .info-banner {
+    .banner {
       background: linear-gradient(135deg, rgba(255,107,44,0.1), rgba(74,158,255,0.05));
       border: 1px solid rgba(255,107,44,0.3);
       border-radius: 16px;
@@ -187,21 +181,54 @@
       margin-bottom: 24px;
     }
 
-    .info-banner.error {
+    .banner.error {
       background: linear-gradient(135deg, rgba(255,82,82,0.15), rgba(255,82,82,0.05));
       border-color: rgba(255,82,82,0.3);
+    }
+
+    .banner.success {
+      background: linear-gradient(135deg, rgba(0,230,118,0.15), rgba(0,230,118,0.05));
+      border-color: rgba(0,230,118,0.3);
     }
 
     .banner-title {
       font-size: 1.1rem;
       font-weight: 700;
       margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .banner-text {
       font-size: 0.9rem;
       color: var(--text-gray);
       line-height: 1.6;
+    }
+
+    .league-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .league-tab {
+      padding: 10px 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+
+    .league-tab:hover { background: var(--card-hover); }
+    .league-tab.active {
+      background: var(--blue);
+      color: white;
+      border-color: transparent;
     }
 
     .date-tabs {
@@ -257,6 +284,15 @@
       margin-bottom: 16px;
       font-size: 0.85rem;
       color: var(--text-gray);
+    }
+
+    .game-league {
+      padding: 4px 10px;
+      background: var(--blue);
+      color: white;
+      border-radius: 8px;
+      font-size: 0.7rem;
+      font-weight: 700;
     }
 
     .game-status {
@@ -332,11 +368,6 @@
       margin-bottom: 12px;
     }
 
-    .empty-subtitle {
-      font-size: 1rem;
-      line-height: 1.6;
-    }
-
     .skeleton {
       background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
       background-size: 800px 100%;
@@ -361,7 +392,7 @@
     <div class="header-inner">
       <div class="brand">
         <div class="brand-icon">🏀</div>
-        <div class="brand-name">BASKETPRO PRO</div>
+        <div class="brand-name">BASKETPRO</div>
       </div>
       
       <div class="header-nav">
@@ -381,9 +412,10 @@
   </div>
 
   <div class="main">
-    <div id="infoBanner" class="hidden"></div>
+    <div id="banner" class="hidden"></div>
     
     <div id="gamesPage">
+      <div class="league-tabs" id="leagueTabs"></div>
       <div class="date-tabs" id="dateTabs"></div>
       <div class="games" id="gamesList">
         <div class="skeleton"></div>
@@ -406,8 +438,15 @@
     // === CONFIG ===
     const API = {
       key: 'aeb2864a3d4dbb8395fa53c83a876a93',
-      host: 'api-nba-v1.p.rapidapi.com',
-      base: 'https://api-nba-v1.p.rapidapi.com'
+      host: 'v1.basketball.api-sports.io',
+      base: 'https://v1.basketball.api-sports.io'
+    };
+
+    const LEAGUES = {
+      nba: { id: 12, name: 'NBA', season: 2024 },
+      euroleague: { id: 120, name: 'Euroleague', season: 2024 },
+      acb: { id: 119, name: 'ACB (Spagna)', season: 2024 },
+      seriea: { id: 142, name: 'Serie A (Italia)', season: 2024 }
     };
 
     const FIREBASE = {
@@ -436,12 +475,12 @@
     // === STATE ===
     let state = {
       page: 'games',
+      league: 'nba',
       date: 0,
       games: [],
       loading: false,
       error: null,
       theme: store.get('theme') || 'dark',
-      season: '2024',  // Stagione NBA corrente
       apiCalls: 0
     };
 
@@ -510,25 +549,29 @@
     async function callAPI(endpoint, params = {}) {
       const url = `${API.base}/${endpoint}?${new URLSearchParams(params)}`;
       console.log('🔌 API Call:', url);
+      console.log('📋 Params:', params);
       
       const res = await fetch(url, {
         headers: {
-          'X-RapidAPI-Key': API.key,
-          'X-RapidAPI-Host': API.host
+          'x-rapidapi-key': API.key,
+          'x-rapidapi-host': API.host
         }
       });
       
       state.apiCalls++;
-      console.log(`📊 API Calls: ${state.apiCalls}`);
+      console.log(`📊 API Calls oggi: ${state.apiCalls}`);
       
       if (res.status === 403) throw new Error('QUOTA');
       if (res.status === 429) throw new Error('RATE_LIMIT');
       if (!res.ok) throw new Error(`HTTP_${res.status}`);
       
-      return await res.json();
+      const data = await res.json();
+      console.log('📦 Response:', data);
+      return data;
     }
 
-    async function loadGames(offset = 0) {
+    async function loadGames(league = null, offset = 0) {
+      if (league) state.league = league;
       state.loading = true;
       state.date = offset;
       state.error = null;
@@ -537,25 +580,30 @@
       
       try {
         const dateStr = getDate(offset);
-        console.log('📅 Loading games for:', dateStr);
+        const leagueData = LEAGUES[state.league];
         
-        const data = await callAPI('games', { date: dateStr });
+        console.log('📅 Loading:', leagueData.name, 'for', dateStr);
         
-        console.log('📦 API Response:', data);
+        const data = await callAPI('games', {
+          league: leagueData.id,
+          season: leagueData.season,
+          date: dateStr
+        });
         
         if (data && data.response && Array.isArray(data.response)) {
           state.games = data.response;
-          console.log(`✅ ${state.games.length} games loaded`);
+          console.log(`✅ ${state.games.length} partite caricate`);
           
           if (state.games.length === 0) {
-            showBanner('info', 'Nessuna Partita', `Non ci sono partite NBA programmate per ${dateStr}. Prova un'altra data!`);
+            showBanner('info', 'Nessuna Partita', `Non ci sono partite ${leagueData.name} per ${dateStr}`);
             updateStatus('ok', 'Nessuna partita');
           } else {
+            showBanner('success', '✅ API PRO Funzionante!', `${state.games.length} partite caricate. Piano PRO attivo: 7500 richieste/giorno disponibili!`);
             updateStatus('ok', `${state.games.length} partite`);
           }
         } else {
           state.games = [];
-          showBanner('error', 'Formato Risposta Non Valido', 'L\'API ha restituito dati in un formato inatteso. Controlla la console per dettagli.');
+          showBanner('error', 'Formato Risposta Non Valido', 'API ha restituito dati non validi.');
           updateStatus('error', 'Errore formato');
         }
         
@@ -565,13 +613,13 @@
         state.games = [];
         
         if (err.message === 'QUOTA') {
-          showBanner('error', '🚫 Quota API Esaurita', 'Hai raggiunto il limite giornaliero. Piano PRO: controlla il tuo account RapidAPI per verificare i limiti. La quota si resetta ogni 24 ore.');
+          showBanner('error', '🚫 Quota Esaurita', 'Limite giornaliero raggiunto. Controlla dashboard RapidAPI.');
           updateStatus('error', 'Quota esaurita');
         } else if (err.message === 'RATE_LIMIT') {
-          showBanner('error', '⏱️ Rate Limit', 'Troppe richieste in poco tempo. Aspetta qualche secondo.');
+          showBanner('error', '⏱️ Rate Limit', 'Troppe richieste. Aspetta qualche secondo.');
           updateStatus('error', 'Rate limit');
         } else {
-          showBanner('error', '❌ Errore Connessione', `Impossibile connettersi all'API: ${err.message}. Verifica la connessione internet.`);
+          showBanner('error', '❌ Errore API', `Errore: ${err.message}. Verifica connessione.`);
           updateStatus('error', 'Errore');
         }
       }
@@ -588,8 +636,8 @@
     }
 
     function showBanner(type, title, text) {
-      const banner = document.getElementById('infoBanner');
-      banner.className = `info-banner ${type}`;
+      const banner = document.getElementById('banner');
+      banner.className = `banner ${type}`;
       banner.innerHTML = `
         <div class="banner-title">${title}</div>
         <div class="banner-text">${text}</div>
@@ -598,13 +646,23 @@
     }
 
     function hideBanner() {
-      document.getElementById('infoBanner').classList.add('hidden');
+      document.getElementById('banner').classList.add('hidden');
     }
 
     // === RENDER ===
     function render() {
+      renderLeagues();
       renderDates();
       renderGames();
+    }
+
+    function renderLeagues() {
+      const container = document.getElementById('leagueTabs');
+      container.innerHTML = Object.entries(LEAGUES).map(([key, league]) => `
+        <div class="league-tab ${state.league === key ? 'active' : ''}" onclick="loadGames('${key}', state.date)">
+          ${league.name}
+        </div>
+      `).join('');
     }
 
     function renderDates() {
@@ -616,7 +674,7 @@
       ];
       
       document.getElementById('dateTabs').innerHTML = tabs.map(t => `
-        <div class="date-tab ${state.date === t.offset ? 'active' : ''}" onclick="loadGames(${t.offset})">
+        <div class="date-tab ${state.date === t.offset ? 'active' : ''}" onclick="loadGames(null, ${t.offset})">
           ${t.label}
         </div>
       `).join('');
@@ -636,9 +694,8 @@
             <div class="empty-icon">🏀</div>
             <div class="empty-title">Nessuna Partita</div>
             <div class="empty-subtitle">
-              Non ci sono partite NBA per questa data.<br>
-              La stagione NBA va da Ottobre a Giugno.<br>
-              Prova un'altra data!
+              Non ci sono partite ${LEAGUES[state.league].name} per questa data.<br>
+              Prova un'altra data o un altro campionato!
             </div>
           </div>
         `;
@@ -646,8 +703,8 @@
       }
       
       container.innerHTML = state.games.map(g => {
-        const isLive = ['Q1','Q2','Q3','Q4','HT','OT'].includes(g.status?.short);
-        const isDone = g.status?.short === 'FT' || g.status?.short === '3';
+        const isLive = g.status?.short === '1' || g.status?.short === '2' || g.status?.short === '3' || g.status?.short === '4';
+        const isDone = g.status?.short === 'FT' || g.status?.short === 'AOT';
         const home = g.teams?.home || {};
         const away = g.teams?.away || {};
         const homeScore = g.scores?.home?.total || 0;
@@ -656,19 +713,20 @@
         return `
           <div class="game">
             <div class="game-header">
-              <span>🕒 ${formatTime(g.date?.start || new Date())}</span>
-              <span class="game-status ${isLive ? 'live' : ''}">${isLive ? '🔴 LIVE' : g.status?.long || 'Scheduled'}</span>
+              <span class="game-league">${LEAGUES[state.league].name}</span>
+              <span>🕒 ${formatTime(g.date || new Date())}</span>
+              <span class="game-status ${isLive ? 'live' : ''}">${isLive ? '🔴 LIVE' : g.status?.long || 'Programmata'}</span>
             </div>
             <div class="game-teams">
               <div class="team">
                 <div class="team-logo">🏀</div>
-                <div class="team-name">${home.name || home.nickname || 'Home'}</div>
+                <div class="team-name">${home.name || 'Home'}</div>
                 <div class="team-score" style="color:var(--orange);">${isDone || isLive ? homeScore : '-'}</div>
               </div>
               <div class="vs">VS</div>
               <div class="team">
                 <div class="team-logo">🏀</div>
-                <div class="team-name">${away.name || away.nickname || 'Away'}</div>
+                <div class="team-name">${away.name || 'Away'}</div>
                 <div class="team-score" style="color:var(--blue);">${isDone || isLive ? awayScore : '-'}</div>
               </div>
             </div>
@@ -682,7 +740,7 @@
         <div class="empty">
           <div class="empty-icon">📊</div>
           <div class="empty-title">Tracking Pronostici</div>
-          <div class="empty-subtitle">Funzionalità in arrivo! Potrai tracciare i tuoi pronostici e monitorare l'accuracy.</div>
+          <div class="empty-subtitle">Funzionalità in arrivo!</div>
         </div>
       `;
     }
@@ -692,25 +750,27 @@
         <div class="empty">
           <div class="empty-icon">📈</div>
           <div class="empty-title">Statistiche</div>
-          <div class="empty-subtitle">Funzionalità in arrivo! Vedrai grafici dettagliati delle tue performance.</div>
+          <div class="empty-subtitle">Funzionalità in arrivo!</div>
         </div>
       `;
     }
 
     // === INIT ===
     async function init() {
-      console.log('🏀 BasketPro PRO v3.0');
+      console.log('🏀 BasketPro v4.0 - API-BASKETBALL PRO');
       console.log('🔑 API Key:', API.key.slice(0, 8) + '...');
+      console.log('🌐 Host:', API.host);
+      console.log('💰 Piano: PRO (7500 req/giorno)');
       console.log('👤 User:', uid);
       
-      await loadGames(0);
+      await loadGames('nba', 0);
       
-      // Auto-refresh live games ogni 30s
+      // Auto-refresh live games
       setInterval(() => {
-        const hasLive = state.games.some(g => ['Q1','Q2','Q3','Q4','HT','OT'].includes(g.status?.short));
+        const hasLive = state.games.some(g => g.status?.short === '1' || g.status?.short === '2' || g.status?.short === '3' || g.status?.short === '4');
         if (hasLive && state.page === 'games' && !state.loading) {
-          console.log('🔄 Auto-refresh live games');
-          loadGames(state.date);
+          console.log('🔄 Auto-refresh live');
+          loadGames(null, state.date);
         }
       }, 30000);
     }
