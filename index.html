@@ -3,387 +3,328 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BasketPro - NBA & Basketball PRO</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <title>BasketPro - Basketball Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
   
   <style>
     :root {
-      --bg: #0a0e1a;
-      --card: #11151f;
-      --card-hover: #161b28;
-      --input: #1c2333;
-      --orange: #ff6b2c;
-      --orange-light: #ff8956;
-      --blue: #4a9eff;
-      --green: #00e676;
-      --yellow: #ffd93d;
-      --red: #ff5252;
-      --text: #e8edf5;
-      --text-light: #f8fafc;
-      --text-gray: #9ca3af;
-      --border: rgba(255,255,255,0.08);
+      --bg-dark: #080c14;
+      --bg-card: #0e1420;
+      --bg-card-light: #111827;
+      --bg-input: #1a2235;
+      --accent-cyan: #00d4ff;
+      --accent-blue: #3b82f6;
+      --accent-green: #00e5a0;
+      --accent-yellow: #fbbf24;
+      --accent-red: #f87171;
+      --accent-orange: #ff6b2c;
+      --text: #e2e8f0;
+      --text-white: #f8fafc;
+      --text-gray: #94a3b8;
+      --text-dark: #64748b;
+      --border: rgba(255,255,255,0.07);
+      --glow-cyan: 0 0 24px rgba(0,212,255,0.25);
     }
 
     body.light-mode {
-      --bg: #f5f7fa;
-      --card: #ffffff;
-      --card-hover: #fafbfc;
-      --input: #f0f2f5;
-      --orange: #f56624;
-      --blue: #2563eb;
-      --green: #00c853;
-      --red: #d32f2f;
+      --bg-dark: #f0f4f8;
+      --bg-card: #ffffff;
+      --bg-card-light: #f8fafc;
+      --bg-input: #e8edf5;
+      --accent-cyan: #0099cc;
       --text: #1e293b;
-      --text-light: #0f172a;
-      --text-gray: #64748b;
-      --border: rgba(0,0,0,0.12);
+      --text-white: #0f172a;
+      --text-gray: #475569;
+      --border: rgba(0,0,0,0.10);
     }
+
+    @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
     
     body {
       font-family: 'Inter', sans-serif;
-      background: var(--bg);
+      background: var(--bg-dark);
+      background-image: 
+        radial-gradient(ellipse at top left, rgba(0,212,255,0.06) 0%, transparent 55%),
+        radial-gradient(ellipse at bottom right, rgba(0,229,160,0.05) 0%, transparent 55%);
       color: var(--text);
       min-height: 100vh;
       padding-bottom: 80px;
     }
 
     .header {
-      background: rgba(10,14,26,0.98);
+      background: rgba(8,12,20,0.96);
       backdrop-filter: blur(24px);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 24px;
+      border-bottom: 1px solid rgba(0,212,255,0.12);
+      padding: 12px 24px;
       position: sticky;
       top: 0;
       z-index: 100;
+      box-shadow: 0 2px 20px rgba(0,0,0,0.5);
     }
 
     .header-inner {
-      max-width: 1600px;
+      max-width: 1400px;
       margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 20px;
+      gap: 16px;
       flex-wrap: wrap;
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
+    .brand { display: flex; align-items: center; gap: 12px; }
+    
     .brand-icon {
-      width: 48px;
-      height: 48px;
-      background: linear-gradient(135deg, var(--orange), var(--orange-light));
-      border-radius: 12px;
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent-orange), var(--accent-cyan));
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.6rem;
+      font-size: 1.3rem;
     }
 
     .brand-name {
-      font-size: 1.5rem;
-      font-weight: 900;
-      background: linear-gradient(135deg, var(--orange), var(--blue));
+      font-size: 1.3rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent-orange), var(--accent-cyan));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
-    .header-nav {
-      display: flex;
-      gap: 8px;
-    }
-
-    .nav-btn {
-      padding: 10px 20px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      color: var(--text);
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .nav-btn:hover { background: var(--card-hover); }
-    .nav-btn.active {
-      background: var(--orange);
-      color: white;
-      border-color: transparent;
-    }
-
-    .header-right {
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    
+    .status-bar { display: flex; gap: 12px; }
+    
+    .status-item {
       display: flex;
       align-items: center;
-      gap: 12px;
-    }
-
-    .api-badge {
-      padding: 8px 16px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      gap: 6px;
+      font-size: 0.7rem;
+      color: var(--text-dark);
     }
 
     .status-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: var(--green);
-      animation: pulse 2s infinite;
+      background: var(--text-dark);
     }
 
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-    .status-dot.loading { background: var(--yellow); }
-    .status-dot.error { background: var(--red); }
+    .status-dot.online { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); }
+    .status-dot.loading { background: var(--accent-yellow); animation: blink 1s infinite; }
+    .status-dot.error { background: var(--accent-red); }
 
     .theme-btn {
-      width: 44px;
-      height: 44px;
-      background: var(--card);
+      width: 36px;
+      height: 36px;
+      background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      font-size: 1.3rem;
+      font-size: 1.1rem;
       transition: all 0.2s;
     }
 
     .theme-btn:hover { transform: scale(1.05); }
 
     .main {
-      max-width: 1600px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 24px;
     }
 
-    .banner {
-      background: linear-gradient(135deg, rgba(255,107,44,0.1), rgba(74,158,255,0.05));
-      border: 1px solid rgba(255,107,44,0.3);
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 24px;
-    }
-
-    .banner.error {
-      background: linear-gradient(135deg, rgba(255,82,82,0.15), rgba(255,82,82,0.05));
-      border-color: rgba(255,82,82,0.3);
-    }
-
-    .banner.success {
-      background: linear-gradient(135deg, rgba(0,230,118,0.15), rgba(0,230,118,0.05));
-      border-color: rgba(0,230,118,0.3);
-    }
-
-    .banner-title {
-      font-size: 1.1rem;
-      font-weight: 700;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .banner-text {
-      font-size: 0.9rem;
-      color: var(--text-gray);
-      line-height: 1.6;
-    }
-
-    .league-tabs {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
-
-    .league-tab {
-      padding: 10px 20px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      cursor: pointer;
-      font-weight: 600;
-      font-size: 0.85rem;
-      transition: all 0.2s;
-    }
-
-    .league-tab:hover { background: var(--card-hover); }
-    .league-tab.active {
-      background: var(--blue);
-      color: white;
-      border-color: transparent;
-    }
-
     .date-tabs {
       display: flex;
-      gap: 10px;
-      margin-bottom: 24px;
+      gap: 8px;
+      margin-bottom: 20px;
       flex-wrap: wrap;
     }
 
     .date-tab {
-      padding: 12px 24px;
-      background: var(--card);
+      padding: 10px 20px;
+      background: var(--bg-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      cursor: pointer;
+      border-radius: 10px;
+      color: var(--text-gray);
+      font-size: 0.85rem;
       font-weight: 600;
+      cursor: pointer;
       transition: all 0.2s;
     }
 
     .date-tab:hover {
-      background: var(--card-hover);
-      transform: translateY(-2px);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
     }
 
     .date-tab.active {
-      background: linear-gradient(135deg, var(--orange), var(--orange-light));
-      color: white;
-      border-color: transparent;
+      background: linear-gradient(135deg, rgba(2,132,199,0.12), rgba(59,130,246,0.12));
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      border-width: 2px;
     }
 
-    .games {
-      display: grid;
-      gap: 16px;
-    }
-
-    .game {
-      background: var(--card);
+    .league-section {
+      background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 20px;
-      transition: all 0.3s;
+      margin-bottom: 20px;
     }
 
-    .game:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-    }
-
-    .game-header {
+    .league-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      gap: 12px;
       margin-bottom: 16px;
-      font-size: 0.85rem;
-      color: var(--text-gray);
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
     }
 
-    .game-league {
-      padding: 4px 10px;
-      background: var(--blue);
-      color: white;
+    .league-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent-orange), var(--accent-cyan));
       border-radius: 8px;
-      font-size: 0.7rem;
-      font-weight: 700;
-    }
-
-    .game-status {
-      padding: 4px 12px;
-      background: var(--input);
-      border-radius: 12px;
-      font-size: 0.75rem;
-      font-weight: 700;
-    }
-
-    .game-status.live {
-      background: var(--red);
-      color: white;
-      animation: pulse 2s infinite;
-    }
-
-    .game-teams {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 24px;
-    }
-
-    .team {
-      flex: 1;
-      text-align: center;
-    }
-
-    .team-logo {
-      width: 64px;
-      height: 64px;
-      margin: 0 auto 12px;
-      background: var(--input);
-      border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 2rem;
+      font-size: 1rem;
+    }
+
+    .league-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-white);
+    }
+
+    .league-count {
+      margin-left: auto;
+      padding: 4px 12px;
+      background: var(--bg-input);
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent-cyan);
+    }
+
+    .match-item {
+      background: var(--bg-card-light);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .match-item:hover {
+      background: rgba(0,212,255,0.05);
+      border-color: var(--accent-cyan);
+      transform: translateX(4px);
+    }
+
+    .match-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-size: 0.75rem;
+      color: var(--text-dark);
+    }
+
+    .match-time {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .match-status {
+      padding: 4px 10px;
+      background: var(--bg-input);
+      border-radius: 8px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .match-status.live {
+      background: var(--accent-red);
+      color: white;
+      animation: blink 2s infinite;
+    }
+
+    .match-teams {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .team {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .team.away {
+      flex-direction: row-reverse;
+      text-align: right;
     }
 
     .team-name {
-      font-weight: 700;
-      font-size: 1.1rem;
-      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
     }
 
     .team-score {
-      font-size: 2.5rem;
+      font-size: 1.8rem;
       font-weight: 800;
+      min-width: 40px;
+      text-align: center;
     }
 
     .vs {
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: var(--text-gray);
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-dark);
     }
 
     .empty {
       text-align: center;
-      padding: 80px 20px;
+      padding: 60px 20px;
       color: var(--text-gray);
     }
 
     .empty-icon {
-      font-size: 5rem;
-      margin-bottom: 20px;
+      font-size: 4rem;
+      margin-bottom: 16px;
       opacity: 0.3;
     }
 
-    .empty-title {
-      font-size: 1.4rem;
-      font-weight: 700;
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-light) 50%, var(--bg-card) 75%);
+      background-size: 800px 100%;
+      animation: shimmer 1.4s infinite linear;
+      border-radius: 8px;
+      height: 100px;
       margin-bottom: 12px;
     }
-
-    .skeleton {
-      background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
-      background-size: 800px 100%;
-      animation: shimmer 1.5s infinite;
-      height: 120px;
-      border-radius: 16px;
-      margin-bottom: 16px;
-    }
-
-    @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
 
     .hidden { display: none !important; }
 
     @media (max-width: 768px) {
       .header-inner { flex-direction: column; }
-      .header-nav { width: 100%; overflow-x: auto; }
     }
   </style>
 </head>
@@ -395,16 +336,12 @@
         <div class="brand-name">BASKETPRO</div>
       </div>
       
-      <div class="header-nav">
-        <div class="nav-btn active" data-page="games">📊 Partite</div>
-        <div class="nav-btn" data-page="tracking">📈 Tracking</div>
-        <div class="nav-btn" data-page="stats">📉 Stats</div>
-      </div>
-      
       <div class="header-right">
-        <div class="api-badge">
-          <div class="status-dot" id="statusDot"></div>
-          <span id="statusText">Connessione...</span>
+        <div class="status-bar">
+          <div class="status-item">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connessione...</span>
+          </div>
         </div>
         <div class="theme-btn" onclick="toggleTheme()" id="themeBtn">🌙</div>
       </div>
@@ -412,25 +349,11 @@
   </div>
 
   <div class="main">
-    <div id="banner" class="hidden"></div>
+    <div class="date-tabs" id="dateTabs"></div>
     
-    <div id="gamesPage">
-      <div class="league-tabs" id="leagueTabs"></div>
-      <div class="date-tabs" id="dateTabs"></div>
-      <div class="games" id="gamesList">
-        <div class="skeleton"></div>
-        <div class="skeleton"></div>
-      </div>
-    </div>
-
-    <div id="trackingPage" class="hidden">
-      <h2 style="margin-bottom:24px;">📈 Tracking Pronostici</h2>
-      <div id="trackingContent"></div>
-    </div>
-
-    <div id="statsPage" class="hidden">
-      <h2 style="margin-bottom:24px;">📉 Statistiche</h2>
-      <div id="statsContent"></div>
+    <div id="gamesContainer">
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
     </div>
   </div>
 
@@ -440,17 +363,6 @@
       key: 'aeb2864a3d4dbb8395fa53c83a876a93',
       host: 'v1.basketball.api-sports.io',
       base: 'https://v1.basketball.api-sports.io'
-    };
-
-    const LEAGUES = {
-      nba: { id: 12, name: 'NBA', season: 2024 },
-      euroleague: { id: 120, name: 'Euroleague', season: 2024 },
-      acb: { id: 119, name: 'ACB (Spagna)', season: 2024 },
-      seriea: { id: 142, name: 'Serie A (Italia)', season: 2024 }
-    };
-
-    const FIREBASE = {
-      url: 'https://basketpro-1a28b-default-rtdb.europe-west1.firebasedatabase.app/'
     };
 
     // === STORAGE ===
@@ -474,30 +386,12 @@
 
     // === STATE ===
     let state = {
-      page: 'games',
-      league: 'nba',
       date: 0,
-      games: [],
+      games: {},
       loading: false,
-      error: null,
       theme: store.get('theme') || 'dark',
       apiCalls: 0
     };
-
-    // === USER ID ===
-    let uid = store.get('uid');
-    if (!uid) {
-      uid = 'user_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
-      store.set('uid', uid);
-    }
-
-    // === FIREBASE ===
-    let db = null;
-    try {
-      firebase.initializeApp({ databaseURL: FIREBASE.url });
-      db = firebase.database();
-      console.log('✅ Firebase OK');
-    } catch(e) { console.warn('⚠️ Firebase skip'); }
 
     // === HELPERS ===
     const getDate = offset => {
@@ -506,8 +400,11 @@
       return d.toISOString().split('T')[0];
     };
 
-    const formatTime = str => new Date(str).toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' });
-    
+    const formatTime = str => {
+      const d = new Date(str);
+      return d.toLocaleTimeString('it', { hour: '2-digit', minute: '2-digit' });
+    };
+
     const formatDateLabel = offset => {
       const d = new Date();
       d.setDate(d.getDate() + offset);
@@ -527,29 +424,10 @@
       document.getElementById('themeBtn').textContent = '☀️';
     }
 
-    // === NAV ===
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      btn.addEventListener('click', () => switchPage(btn.dataset.page));
-    });
-
-    function switchPage(page) {
-      state.page = page;
-      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-      document.querySelector(`[data-page="${page}"]`).classList.add('active');
-      
-      document.getElementById('gamesPage').classList.toggle('hidden', page !== 'games');
-      document.getElementById('trackingPage').classList.toggle('hidden', page !== 'tracking');
-      document.getElementById('statsPage').classList.toggle('hidden', page !== 'stats');
-      
-      if (page === 'tracking') renderTracking();
-      if (page === 'stats') renderStats();
-    }
-
     // === API ===
     async function callAPI(endpoint, params = {}) {
       const url = `${API.base}/${endpoint}?${new URLSearchParams(params)}`;
-      console.log('🔌 API Call:', url);
-      console.log('📋 Params:', params);
+      console.log('🔌 API:', url);
       
       const res = await fetch(url, {
         headers: {
@@ -559,69 +437,50 @@
       });
       
       state.apiCalls++;
-      console.log(`📊 API Calls oggi: ${state.apiCalls}`);
+      console.log(`📊 Calls: ${state.apiCalls}`);
       
-      if (res.status === 403) throw new Error('QUOTA');
-      if (res.status === 429) throw new Error('RATE_LIMIT');
       if (!res.ok) throw new Error(`HTTP_${res.status}`);
       
       const data = await res.json();
-      console.log('📦 Response:', data);
+      console.log('📦 Data:', data);
       return data;
     }
 
-    async function loadGames(league = null, offset = 0) {
-      if (league) state.league = league;
+    async function loadGames(offset = 0) {
       state.loading = true;
       state.date = offset;
-      state.error = null;
-      hideBanner();
+      state.games = {};
       updateStatus('loading', 'Caricamento...');
       
       try {
         const dateStr = getDate(offset);
-        const leagueData = LEAGUES[state.league];
+        console.log('📅 Date:', dateStr);
         
-        console.log('📅 Loading:', leagueData.name, 'for', dateStr);
-        
-        const data = await callAPI('games', {
-          league: leagueData.id,
-          season: leagueData.season,
-          date: dateStr
-        });
+        // Carico TUTTE le partite del giorno (senza filtro league)
+        const data = await callAPI('games', { date: dateStr });
         
         if (data && data.response && Array.isArray(data.response)) {
-          state.games = data.response;
-          console.log(`✅ ${state.games.length} partite caricate`);
+          // Organizzo per campionato
+          data.response.forEach(game => {
+            const leagueName = game.league?.name || 'Other';
+            if (!state.games[leagueName]) {
+              state.games[leagueName] = [];
+            }
+            state.games[leagueName].push(game);
+          });
           
-          if (state.games.length === 0) {
-            showBanner('info', 'Nessuna Partita', `Non ci sono partite ${leagueData.name} per ${dateStr}`);
-            updateStatus('ok', 'Nessuna partita');
-          } else {
-            showBanner('success', '✅ API PRO Funzionante!', `${state.games.length} partite caricate. Piano PRO attivo: 7500 richieste/giorno disponibili!`);
-            updateStatus('ok', `${state.games.length} partite`);
-          }
+          const total = data.response.length;
+          console.log(`✅ ${total} partite caricate`);
+          console.log(`🏀 Campionati:`, Object.keys(state.games));
+          
+          updateStatus('online', `${total} partite`);
         } else {
-          state.games = [];
-          showBanner('error', 'Formato Risposta Non Valido', 'API ha restituito dati non validi.');
-          updateStatus('error', 'Errore formato');
+          updateStatus('online', '0 partite');
         }
         
       } catch(err) {
         console.error('❌ Error:', err);
-        state.error = err;
-        state.games = [];
-        
-        if (err.message === 'QUOTA') {
-          showBanner('error', '🚫 Quota Esaurita', 'Limite giornaliero raggiunto. Controlla dashboard RapidAPI.');
-          updateStatus('error', 'Quota esaurita');
-        } else if (err.message === 'RATE_LIMIT') {
-          showBanner('error', '⏱️ Rate Limit', 'Troppe richieste. Aspetta qualche secondo.');
-          updateStatus('error', 'Rate limit');
-        } else {
-          showBanner('error', '❌ Errore API', `Errore: ${err.message}. Verifica connessione.`);
-          updateStatus('error', 'Errore');
-        }
+        updateStatus('error', 'Errore API');
       }
       
       state.loading = false;
@@ -635,34 +494,10 @@
       txt.textContent = text;
     }
 
-    function showBanner(type, title, text) {
-      const banner = document.getElementById('banner');
-      banner.className = `banner ${type}`;
-      banner.innerHTML = `
-        <div class="banner-title">${title}</div>
-        <div class="banner-text">${text}</div>
-      `;
-      banner.classList.remove('hidden');
-    }
-
-    function hideBanner() {
-      document.getElementById('banner').classList.add('hidden');
-    }
-
     // === RENDER ===
     function render() {
-      renderLeagues();
       renderDates();
       renderGames();
-    }
-
-    function renderLeagues() {
-      const container = document.getElementById('leagueTabs');
-      container.innerHTML = Object.entries(LEAGUES).map(([key, league]) => `
-        <div class="league-tab ${state.league === key ? 'active' : ''}" onclick="loadGames('${key}', state.date)">
-          ${league.name}
-        </div>
-      `).join('');
     }
 
     function renderDates() {
@@ -670,107 +505,111 @@
         { offset: -1, label: 'Ieri' },
         { offset: 0, label: 'Oggi' },
         { offset: 1, label: 'Domani' },
-        { offset: 2, label: formatDateLabel(2) }
+        { offset: 2, label: formatDateLabel(2) },
+        { offset: 3, label: formatDateLabel(3) }
       ];
       
       document.getElementById('dateTabs').innerHTML = tabs.map(t => `
-        <div class="date-tab ${state.date === t.offset ? 'active' : ''}" onclick="loadGames(null, ${t.offset})">
+        <div class="date-tab ${state.date === t.offset ? 'active' : ''}" onclick="loadGames(${t.offset})">
           ${t.label}
         </div>
       `).join('');
     }
 
     function renderGames() {
-      const container = document.getElementById('gamesList');
+      const container = document.getElementById('gamesContainer');
       
       if (state.loading) {
         container.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
         return;
       }
       
-      if (!state.games || state.games.length === 0) {
+      const leagues = Object.keys(state.games);
+      
+      if (leagues.length === 0) {
         container.innerHTML = `
           <div class="empty">
             <div class="empty-icon">🏀</div>
-            <div class="empty-title">Nessuna Partita</div>
-            <div class="empty-subtitle">
-              Non ci sono partite ${LEAGUES[state.league].name} per questa data.<br>
-              Prova un'altra data o un altro campionato!
-            </div>
+            <div style="font-size:1.2rem;font-weight:700;margin-bottom:8px;">Nessuna Partita</div>
+            <div>Non ci sono partite basket per questa data.</div>
           </div>
         `;
         return;
       }
       
-      container.innerHTML = state.games.map(g => {
-        const isLive = g.status?.short === '1' || g.status?.short === '2' || g.status?.short === '3' || g.status?.short === '4';
-        const isDone = g.status?.short === 'FT' || g.status?.short === 'AOT';
-        const home = g.teams?.home || {};
-        const away = g.teams?.away || {};
-        const homeScore = g.scores?.home?.total || 0;
-        const awayScore = g.scores?.away?.total || 0;
+      container.innerHTML = leagues.map(leagueName => {
+        const games = state.games[leagueName];
         
         return `
-          <div class="game">
-            <div class="game-header">
-              <span class="game-league">${LEAGUES[state.league].name}</span>
-              <span>🕒 ${formatTime(g.date || new Date())}</span>
-              <span class="game-status ${isLive ? 'live' : ''}">${isLive ? '🔴 LIVE' : g.status?.long || 'Programmata'}</span>
+          <div class="league-section">
+            <div class="league-header">
+              <div class="league-icon">🏀</div>
+              <div class="league-name">${leagueName}</div>
+              <div class="league-count">${games.length} partite</div>
             </div>
-            <div class="game-teams">
-              <div class="team">
-                <div class="team-logo">🏀</div>
-                <div class="team-name">${home.name || 'Home'}</div>
-                <div class="team-score" style="color:var(--orange);">${isDone || isLive ? homeScore : '-'}</div>
-              </div>
-              <div class="vs">VS</div>
-              <div class="team">
-                <div class="team-logo">🏀</div>
-                <div class="team-name">${away.name || 'Away'}</div>
-                <div class="team-score" style="color:var(--blue);">${isDone || isLive ? awayScore : '-'}</div>
-              </div>
-            </div>
+            
+            ${games.map(game => {
+              const isLive = game.status?.short === '1' || game.status?.short === '2' || 
+                            game.status?.short === '3' || game.status?.short === '4';
+              const isDone = game.status?.short === 'FT' || game.status?.short === 'AOT';
+              const home = game.teams?.home || {};
+              const away = game.teams?.away || {};
+              const homeScore = game.scores?.home?.total || 0;
+              const awayScore = game.scores?.away?.total || 0;
+              
+              return `
+                <div class="match-item">
+                  <div class="match-header">
+                    <div class="match-time">
+                      🕒 ${formatTime(game.date || new Date())}
+                    </div>
+                    <div class="match-status ${isLive ? 'live' : ''}">
+                      ${isLive ? '🔴 LIVE' : game.status?.long || 'Scheduled'}
+                    </div>
+                  </div>
+                  
+                  <div class="match-teams">
+                    <div class="team">
+                      <div class="team-name">${home.name || 'Home'}</div>
+                      <div class="team-score" style="color:var(--accent-orange);">
+                        ${isDone || isLive ? homeScore : '-'}
+                      </div>
+                    </div>
+                    
+                    <div class="vs">VS</div>
+                    
+                    <div class="team away">
+                      <div class="team-name">${away.name || 'Away'}</div>
+                      <div class="team-score" style="color:var(--accent-cyan);">
+                        ${isDone || isLive ? awayScore : '-'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
           </div>
         `;
       }).join('');
     }
 
-    function renderTracking() {
-      document.getElementById('trackingContent').innerHTML = `
-        <div class="empty">
-          <div class="empty-icon">📊</div>
-          <div class="empty-title">Tracking Pronostici</div>
-          <div class="empty-subtitle">Funzionalità in arrivo!</div>
-        </div>
-      `;
-    }
-
-    function renderStats() {
-      document.getElementById('statsContent').innerHTML = `
-        <div class="empty">
-          <div class="empty-icon">📈</div>
-          <div class="empty-title">Statistiche</div>
-          <div class="empty-subtitle">Funzionalità in arrivo!</div>
-        </div>
-      `;
-    }
-
     // === INIT ===
     async function init() {
-      console.log('🏀 BasketPro v4.0 - API-BASKETBALL PRO');
-      console.log('🔑 API Key:', API.key.slice(0, 8) + '...');
+      console.log('🏀 BasketPro FINAL');
+      console.log('🔑 API:', API.key.slice(0, 8) + '...');
       console.log('🌐 Host:', API.host);
-      console.log('💰 Piano: PRO (7500 req/giorno)');
-      console.log('👤 User:', uid);
       
-      await loadGames('nba', 0);
+      await loadGames(0);
       
       // Auto-refresh live games
       setInterval(() => {
-        const hasLive = state.games.some(g => g.status?.short === '1' || g.status?.short === '2' || g.status?.short === '3' || g.status?.short === '4');
-        if (hasLive && state.page === 'games' && !state.loading) {
-          console.log('🔄 Auto-refresh live');
-          loadGames(null, state.date);
+        const hasLive = Object.values(state.games).some(league => 
+          league.some(g => ['1','2','3','4'].includes(g.status?.short))
+        );
+        
+        if (hasLive && !state.loading) {
+          console.log('🔄 Refresh');
+          loadGames(state.date);
         }
       }, 30000);
     }
