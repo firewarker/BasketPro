@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0e1a">
+  <title>BasketPro - NBA Prediction Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  
+  <style>
+    :root {
+      --bg-dark: #0a0e1a;
+      --bg-card: #11151f;
+      --bg-card-light: #161b28;
+      --bg-input: #1c2333;
+      --accent-orange: #ff6b2c;
+      --accent-orange-light: #ff8956;
+      --accent-blue: #4a9eff;
+      --accent-green: #00e676;
+      --accent-yellow: #ffd93d;
+      --accent-red: #ff5252;
+      --accent-purple: #b794f6;
+      --accent-cyan: #00e5ff;
+      --text: #e8edf5;
+      --text-white: #f8fafc;
+      --text-gray: #9ca3af;
+      --text-dark: #6b7280;
+      --border: rgba(255,255,255,0.08);
+      --shadow-sm: 0 2px 4px rgba(0,0,0,0.4);
+      --shadow-md: 0 4px 20px rgba(0,0,0,0.5);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,0.6);
+      --glow-orange: 0 0 30px rgba(255,107,44,0.3);
+      --glow-blue: 0 0 25px rgba(74,158,255,0.25);
+      --glow-green: 0 0 25px rgba(0,230,118,0.25);
+    }
+
+    body.light-mode {
+      --bg-dark: #f5f7fa;
+      --bg-card: #ffffff;
+      --bg-card-light: #fafbfc;
+      --bg-input: #f0f2f5;
+      --accent-orange: #f56624;
+      --accent-orange-light: #ff7f47;
+      --accent-blue: #2563eb;
+      --accent-green: #00c853;
+      --accent-yellow: #f9a825;
+      --accent-red: #d32f2f;
+      --accent-purple: #7c3aed;
+      --accent-cyan: #00acc1;
+      --text: #1e293b;
+      --text-white: #0f172a;
+      --text-gray: #64748b;
+      --text-dark: #94a3b8;
+      --border: rgba(0,0,0,0.12);
+      --shadow-sm: 0 2px 4px rgba(0,0,0,0.08);
+      --shadow-md: 0 4px 20px rgba(0,0,0,0.10);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,0.12);
+    }
+
+    @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+    @keyframes slideIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+    @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-light) 50%, var(--bg-card) 75%);
+      background-size: 800px 100%;
+      animation: shimmer 1.5s infinite linear;
+      border-radius: 8px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg-dark);
+      background-image: 
+        radial-gradient(ellipse at top left, rgba(255,107,44,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at bottom right, rgba(74,158,255,0.06) 0%, transparent 50%);
+      color: var(--text);
+      min-height: 100vh;
+      padding-bottom: 100px;
+      overflow-x: hidden;
+    }
+
+    .header {
+      background: rgba(10,14,26,0.98);
+      backdrop-filter: blur(24px);
+      border-bottom: 1px solid rgba(255,107,44,0.15);
+      padding: 14px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 24px rgba(0,0,0,0.6);
+    }
+
+    .header-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--accent-orange), var(--accent-orange-light));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: var(--glow-orange);
+    }
+
+    .brand-name {
+      font-size: 1.4rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent-orange), var(--accent-blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+
+    .header-nav {
+      display: flex;
+      gap: 10px;
+    }
+
+    .nav-btn {
+      padding: 8px 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .nav-btn:hover {
+      background: var(--bg-card-light);
+      transform: translateY(-2px);
+    }
+
+    .nav-btn.active {
+      background: var(--accent-orange);
+      color: white;
+      border-color: transparent;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .stats-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 0.75rem;
+    }
+
+    .stats-value {
+      font-weight: 700;
+      color: var(--accent-green);
+    }
+
+    .theme-toggle {
+      width: 44px;
+      height: 44px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-size: 1.2rem;
+    }
+
+    .theme-toggle:hover {
+      background: var(--bg-card-light);
+      transform: scale(1.05);
+    }
+
+    .slip-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      background: linear-gradient(135deg, var(--accent-orange), var(--accent-orange-light));
+      border-radius: 24px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      color: white;
+      box-shadow: var(--glow-orange);
+      transition: all 0.3s;
+    }
+
+    .slip-badge:hover {
+      transform: scale(1.05);
+    }
+
+    .slip-count {
+      background: rgba(255,255,255,0.25);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 800;
+    }
+
+    .main {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .date-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .date-tab {
+      padding: 12px 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .date-tab:hover {
+      background: var(--bg-card-light);
+      transform: translateY(-2px);
+    }
+
+    .date-tab.active {
+      background: linear-gradient(135deg, var(--accent-orange), var(--accent-orange-light));
+      color: white;
+      border-color: transparent;
+      box-shadow: var(--glow-orange);
+    }
+
+    .games-list {
+      display: grid;
+      gap: 16px;
+    }
+
+    .game-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .game-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-orange), var(--accent-blue));
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .game-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--accent-orange);
+    }
+
+    .game-card:hover::before {
+      opacity: 1;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      animation: fadeIn 0.3s;
+    }
+
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-lg);
+      animation: slideIn 0.4s;
+    }
+
+    .modal-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--text-white);
+    }
+
+    .modal-close {
+      width: 36px;
+      height: 36px;
+      background: var(--bg-input);
+      border: none;
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 1.3rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .modal-close:hover {
+      background: var(--accent-red);
+      color: white;
+    }
+
+    .modal-body {
+      padding: 24px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-orange), var(--accent-orange-light));
+      color: white;
+      box-shadow: var(--glow-orange);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(255,107,44,0.4);
+    }
+
+    .btn-secondary {
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-card-light);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-gray);
+    }
+
+    .empty-icon {
+      font-size: 4rem;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 768px) {
+      .header-inner {
+        flex-direction: column;
+        gap: 12px;
+      }
+      .header-nav {
+        width: 100%;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon">🏀</div>
+        <div class="brand-name">BASKETPRO</div>
+      </div>
+      
+      <div class="header-nav">
+        <div class="nav-btn active" data-page="dashboard">📊 Dashboard</div>
+        <div class="nav-btn" data-page="tracking">📈 Tracking</div>
+        <div class="nav-btn" data-page="stats">📉 Statistiche</div>
+      </div>
+      
+      <div class="header-right">
+        <div class="stats-badge">
+          <span>Accuracy:</span>
+          <span class="stats-value" id="accuracyBadge">--</span>
+        </div>
+        <div class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</div>
+        <div class="slip-badge" onclick="openSlip()">
+          <span>📋</span>
+          <span class="slip-count" id="slipCount">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- DASHBOARD PAGE -->
+    <div id="dashboardPage">
+      <div class="date-tabs" id="dateTabs"></div>
+      <div class="games-list" id="gamesList">
+        <div class="empty-state">
+          <div class="empty-icon">🏀</div>
+          <div>Caricamento partite...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRACKING PAGE -->
+    <div id="trackingPage" class="hidden">
+      <h2 style="margin-bottom: 24px;">📈 Tracking Pronostici</h2>
+      <div id="trackingContent"></div>
+    </div>
+
+    <!-- STATS PAGE -->
+    <div id="statsPage" class="hidden">
+      <h2 style="margin-bottom: 24px;">📉 Statistiche Performance</h2>
+      <div id="statsContent"></div>
+    </div>
+  </div>
+
+  <script>
+    // === CONFIG ===
+    const API_CONFIG = {
+      key: 'aeb2864a3d4dbb8395fa53c83a876a93',
+      host: 'api-nba-v1.p.rapidapi.com',
+      baseURL: 'https://api-nba-v1.p.rapidapi.com'
+    };
+
+    const FIREBASE_CONFIG = {
+      databaseURL: 'https://basketpro-1a28b-default-rtdb.europe-west1.firebasedatabase.app/'
+    };
+
+    // === USER ID ===
+    let USER_ID = localStorage.getItem('basketpro_user_id');
+    if (!USER_ID) {
+      USER_ID = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('basketpro_user_id', USER_ID);
+    }
+
+    // === STATE ===
+    let state = {
+      currentPage: 'dashboard',
+      currentDate: 0,
+      games: [],
+      loading: true,
+      slip: [],
+      trackedBets: [],
+      stats: {
+        total: 0,
+        won: 0,
+        lost: 0,
+        pending: 0,
+        accuracy: 0
+      },
+      theme: localStorage.getItem('basketpro_theme') || 'dark'
+    };
+
+    // === FIREBASE ===
+    let firebaseDB = null;
+    try {
+      firebase.initializeApp(FIREBASE_CONFIG);
+      firebaseDB = firebase.database();
+      console.log('✅ Firebase OK');
+    } catch(e) {
+      console.warn('⚠️ Firebase error:', e);
+    }
+
+    // === HELPERS ===
+    function getDateString(offset = 0) {
+      const date = new Date();
+      date.setDate(date.getDate() + offset);
+      return date.toISOString().split('T')[0];
+    }
+
+    function formatTime(dateString) {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // === THEME ===
+    function toggleTheme() {
+      state.theme = state.theme === 'dark' ? 'light' : 'dark';
+      document.body.classList.toggle('light-mode', state.theme === 'light');
+      document.getElementById('themeToggle').textContent = state.theme === 'dark' ? '🌙' : '☀️';
+      localStorage.setItem('basketpro_theme', state.theme);
+    }
+
+    if (state.theme === 'light') {
+      document.body.classList.add('light-mode');
+      document.getElementById('themeToggle').textContent = '☀️';
+    }
+
+    // === NAVIGATION ===
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const page = this.dataset.page;
+        switchPage(page);
+      });
+    });
+
+    function switchPage(page) {
+      state.currentPage = page;
+      
+      // Update nav
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector(`[data-page="${page}"]`).classList.add('active');
+      
+      // Update pages
+      document.getElementById('dashboardPage').classList.toggle('hidden', page !== 'dashboard');
+      document.getElementById('trackingPage').classList.toggle('hidden', page !== 'tracking');
+      document.getElementById('statsPage').classList.toggle('hidden', page !== 'stats');
+      
+      // Load page content
+      if (page === 'tracking') renderTracking();
+      if (page === 'stats') renderStats();
+    }
+
+    // === API ===
+    async function fetchAPI(endpoint, params = {}) {
+      const queryString = new URLSearchParams(params).toString();
+      const url = `${API_CONFIG.baseURL}/${endpoint}${queryString ? '?' + queryString : ''}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'X-RapidAPI-Key': API_CONFIG.key,
+          'X-RapidAPI-Host': API_CONFIG.host
+        }
+      });
+      
+      if (!response.ok) throw new Error(`API Error: ${response.status}`);
+      return await response.json();
+    }
+
+    async function loadGames(dateOffset = 0) {
+      state.loading = true;
+      state.currentDate = dateOffset;
+      
+      try {
+        const dateStr = getDateString(dateOffset);
+        const response = await fetchAPI('games', { date: dateStr });
+        
+        if (response && response.response) {
+          state.games = response.response;
+        } else {
+          state.games = [];
+        }
+      } catch(error) {
+        console.error('Load error:', error);
+        state.games = [];
+      }
+      
+      state.loading = false;
+      render();
+    }
+
+    // === RENDER ===
+    function render() {
+      renderDateTabs();
+      renderGames();
+      updateStatsDisplay();
+    }
+
+    function renderDateTabs() {
+      const container = document.getElementById('dateTabs');
+      const dates = [
+        { offset: -1, label: 'Ieri' },
+        { offset: 0, label: 'Oggi' },
+        { offset: 1, label: 'Domani' }
+      ];
+      
+      container.innerHTML = dates.map(d => `
+        <div class="date-tab ${state.currentDate === d.offset ? 'active' : ''}" 
+             onclick="loadGames(${d.offset})">
+          ${d.label}
+        </div>
+      `).join('');
+    }
+
+    function renderGames() {
+      const container = document.getElementById('gamesList');
+      
+      if (state.loading) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div>Caricamento...</div></div>';
+        return;
+      }
+      
+      if (!state.games || state.games.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏀</div><div>Nessuna partita</div></div>';
+        return;
+      }
+      
+      container.innerHTML = state.games.map(game => `
+        <div class="game-card" onclick="openGameDetails(${game.id})">
+          <div style="font-size:0.85rem;color:var(--text-gray);margin-bottom:12px;">
+            ${formatTime(game.date?.start || new Date())}
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="flex:1;text-align:center;">
+              <div style="font-weight:700;font-size:1.1rem;margin-bottom:4px;">
+                ${game.teams?.home?.name || 'Home'}
+              </div>
+              <div style="font-size:2rem;font-weight:800;color:var(--accent-orange);">
+                ${game.scores?.home?.total || '-'}
+              </div>
+            </div>
+            <div style="padding:0 20px;font-size:0.9rem;color:var(--text-gray);">VS</div>
+            <div style="flex:1;text-align:center;">
+              <div style="font-weight:700;font-size:1.1rem;margin-bottom:4px;">
+                ${game.teams?.away?.name || 'Away'}
+              </div>
+              <div style="font-size:2rem;font-weight:800;color:var(--accent-blue);">
+                ${game.scores?.away?.total || '-'}
+              </div>
+            </div>
+          </div>
+          <div style="text-align:center;margin-top:12px;padding:8px;background:var(--bg-input);border-radius:8px;font-size:0.8rem;">
+            ${game.status?.long || 'Scheduled'}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderTracking() {
+      const content = document.getElementById('trackingContent');
+      
+      if (state.trackedBets.length === 0) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📊</div>
+            <div style="font-size:1.2rem;font-weight:700;margin-bottom:8px;">Nessun pronostico tracciato</div>
+            <div>Inizia ad aggiungere previsioni alla schedina!</div>
+          </div>
+        `;
+        return;
+      }
+      
+      content.innerHTML = state.trackedBets.map(bet => `
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <div style="font-weight:700;">${bet.type}</div>
+            <div style="font-size:0.85rem;color:var(--text-gray);">${bet.date}</div>
+          </div>
+          <div style="font-size:0.9rem;margin-bottom:8px;">${bet.description}</div>
+          <div style="display:flex;gap:8px;">
+            <span style="padding:4px 10px;background:var(--accent-${bet.status === 'won' ? 'green' : bet.status === 'lost' ? 'red' : 'yellow'});color:white;border-radius:8px;font-size:0.75rem;font-weight:600;">
+              ${bet.status.toUpperCase()}
+            </span>
+            <span style="padding:4px 10px;background:var(--bg-input);border-radius:8px;font-size:0.75rem;font-weight:600;">
+              ${bet.confidence}% confidence
+            </span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderStats() {
+      const content = document.getElementById('statsContent');
+      content.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
+            <div style="font-size:2.5rem;font-weight:800;color:var(--accent-orange);">${state.stats.total}</div>
+            <div style="font-size:0.85rem;color:var(--text-gray);margin-top:4px;">Totale Pronostici</div>
+          </div>
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
+            <div style="font-size:2.5rem;font-weight:800;color:var(--accent-green);">${state.stats.won}</div>
+            <div style="font-size:0.85rem;color:var(--text-gray);margin-top:4px;">Vinti</div>
+          </div>
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
+            <div style="font-size:2.5rem;font-weight:800;color:var(--accent-red);">${state.stats.lost}</div>
+            <div style="font-size:0.85rem;color:var(--text-gray);margin-top:4px;">Persi</div>
+          </div>
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
+            <div style="font-size:2.5rem;font-weight:800;color:var(--accent-blue);">${state.stats.accuracy}%</div>
+            <div style="font-size:0.85rem;color:var(--text-gray);margin-top:4px;">Accuracy</div>
+          </div>
+        </div>
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;">
+          <canvas id="statsChart"></canvas>
+        </div>
+      `;
+      
+      // Render chart
+      setTimeout(() => {
+        const ctx = document.getElementById('statsChart');
+        if (ctx) {
+          new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'],
+              datasets: [{
+                label: 'Accuracy %',
+                data: [65, 68, 70, 72, 71, 73, 75],
+                borderColor: '#ff6b2c',
+                backgroundColor: 'rgba(255,107,44,0.1)',
+                tension: 0.4
+              }]
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { display: false }
+              },
+              scales: {
+                y: { beginAtZero: true, max: 100 }
+              }
+            }
+          });
+        }
+      }, 100);
+    }
+
+    function updateStatsDisplay() {
+      const won = state.trackedBets.filter(b => b.status === 'won').length;
+      const lost = state.trackedBets.filter(b => b.status === 'lost').length;
+      const total = won + lost;
+      const accuracy = total > 0 ? Math.round((won / total) * 100) : 0;
+      
+      state.stats = {
+        total: state.trackedBets.length,
+        won,
+        lost,
+        pending: state.trackedBets.filter(b => b.status === 'pending').length,
+        accuracy
+      };
+      
+      document.getElementById('accuracyBadge').textContent = accuracy + '%';
+    }
+
+    // === MODALS ===
+    function openGameDetails(gameId) {
+      console.log('Game details:', gameId);
+      // TODO: Implement detailed modal
+    }
+
+    function openSlip() {
+      console.log('Open slip');
+      // TODO: Implement slip modal
+    }
+
+    // === FIREBASE SAVE/LOAD ===
+    async function saveToFirebase(key, data) {
+      if (!firebaseDB) return;
+      try {
+        await firebaseDB.ref(`users/${USER_ID}/${key}`).set(data);
+        console.log('✅ Saved to Firebase:', key);
+      } catch(e) {
+        console.warn('Firebase save error:', e);
+      }
+    }
+
+    async function loadFromFirebase(key) {
+      if (!firebaseDB) return null;
+      try {
+        const snapshot = await firebaseDB.ref(`users/${USER_ID}/${key}`).once('value');
+        return snapshot.val();
+      } catch(e) {
+        console.warn('Firebase load error:', e);
+        return null;
+      }
+    }
+
+    // === INIT ===
+    async function init() {
+      console.log('🏀 BasketPro v2.0 starting...');
+      console.log('👤 User ID:', USER_ID);
+      
+      // Load tracked bets from Firebase
+      const savedBets = await loadFromFirebase('trackedBets');
+      if (savedBets) {
+        state.trackedBets = savedBets;
+        updateStatsDisplay();
+      }
+      
+      // Load games
+      await loadGames(0);
+      
+      // Auto-refresh every 30s if there are live games
+      setInterval(() => {
+        const hasLive = state.games.some(g => 
+          ['Q1','Q2','Q3','Q4','HT','OT'].includes(g.status?.short)
+        );
+        if (hasLive && state.currentPage === 'dashboard') {
+          loadGames(state.currentDate);
+        }
+      }, 30000);
+      
+      // Auto-save every 5 minutes
+      setInterval(() => {
+        if (state.trackedBets.length > 0) {
+          saveToFirebase('trackedBets', state.trackedBets);
+        }
+      }, 5 * 60 * 1000);
+    }
+
+    init();
+  </script>
+</body>
+</html>
