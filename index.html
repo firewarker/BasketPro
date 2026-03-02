@@ -503,11 +503,43 @@
       databaseURL: 'https://basketpro-1a28b-default-rtdb.europe-west1.firebasedatabase.app/'
     };
 
+    // === STORAGE HELPER (with fallback) ===
+    const storage = {
+      get: function(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch(e) {
+          console.warn('⚠️ localStorage error, using sessionStorage');
+          return sessionStorage.getItem(key);
+        }
+      },
+      set: function(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch(e) {
+          if (e.name === 'QuotaExceededError') {
+            console.warn('⚠️ localStorage full! Clearing old data...');
+            try {
+              // Clear old BasketPro data
+              Object.keys(localStorage).forEach(k => {
+                if (k.startsWith('basketpro_')) localStorage.removeItem(k);
+              });
+              // Retry
+              localStorage.setItem(key, value);
+            } catch(e2) {
+              console.warn('⚠️ Still full, using sessionStorage');
+              sessionStorage.setItem(key, value);
+            }
+          }
+        }
+      }
+    };
+
     // === USER ID ===
-    let USER_ID = localStorage.getItem('basketpro_user_id');
+    let USER_ID = storage.get('basketpro_user_id');
     if (!USER_ID) {
       USER_ID = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('basketpro_user_id', USER_ID);
+      storage.set('basketpro_user_id', USER_ID);
     }
 
     // === STATE ===
@@ -525,7 +557,7 @@
         pending: 0,
         accuracy: 0
       },
-      theme: localStorage.getItem('basketpro_theme') || 'dark'
+      theme: storage.get('basketpro_theme') || 'dark'
     };
 
     // === FIREBASE ===
@@ -555,7 +587,7 @@
       state.theme = state.theme === 'dark' ? 'light' : 'dark';
       document.body.classList.toggle('light-mode', state.theme === 'light');
       document.getElementById('themeToggle').textContent = state.theme === 'dark' ? '🌙' : '☀️';
-      localStorage.setItem('basketpro_theme', state.theme);
+      storage.set('basketpro_theme', state.theme);
     }
 
     if (state.theme === 'light') {
