@@ -309,89 +309,266 @@ async function openM(gid){
   askAI(`Analizza ${g.teams.home.name} vs ${g.teams.away.name} (${g.league.name}). Casa: ${hD.N}g ${fm(hD.wp*100,0)}%W PPG ${fm(hD.ppg)} ult10 ${fm(hD.rP)}. Ospite: ${aD.N}g ${fm(aD.wp*100,0)}%W PPG ${fm(aD.ppg)} ult10 ${fm(aD.rP)}. Elo ${Math.round(R.hE)} vs ${Math.round(R.aE)}. Net ${fm(hD.net)} vs ${fm(aD.net)}. Forma ${hD.form.join('')} vs ${aD.form.join('')}. Dammi un pronostico chiaro.`).then(t=>{const e=document.getElementById('ai'+gid);if(e)e.innerHTML=t||'Non disponibile.'});
 }
 
-// ═══ ENGINE v2 STABLE ═══
+// ═══ ENGINE v3 — Pace-adjusted, fatigue-aware ═══
+
+// Home advantage per lega (punti)
+const LEAGUE_HA={
+  12:3.5,  // NBA
+  116:2.5, // Euroleague
+  117:2.8, // EuroCup
+  120:4,   // Serie A Italia
+  194:3.5, // ACB Spagna
+  119:3,   // BBL Germania
+  132:4,   // BSN Porto Rico
+  79:3.5,  // LNB Francia
+  202:3,   // NBL Australia
+  160:4.5, // Liga Brasil
+  83:4,    // Super League Turchia
+  206:3.5, // CBA Cina
+};
+function getHA(lid){ return LEAGUE_HA[lid] || 3.2; }
+
 function anG(games,tid){
   const fin=games.filter(g=>['FT','AOT'].includes(g.status?.short)&&g.scores?.home?.total!=null).sort((a,b)=>new Date(a.date)-new Date(b.date)||(a.id-b.id));
   if(!fin.length)return null;
   let tP=0,tO=0,w=0,hW=0,hN=0,aW=0,aN=0;const mg=[],tt=[];
   fin.forEach(g=>{const isH=g.teams.home.id===tid,my=isH?g.scores.home.total:g.scores.away.total,op=isH?g.scores.away.total:g.scores.home.total;tP+=my;tO+=op;mg.push(my-op);tt.push(my+op);if(my>op)w++;if(isH){hN++;if(my>op)hW++}else{aN++;if(my>op)aW++}});
-  const f6=fin.slice(-6).reverse().map(g=>{const isH=g.teams.home.id===tid,my=isH?g.scores.home.total:g.scores.away.total,op=isH?g.scores.away.total:g.scores.home.total;return my>op?'W':'L'});
-  const l10=fin.slice(-10);let r10=0,r10o=0;l10.forEach(g=>{const isH=g.teams.home.id===tid;r10+=(isH?g.scores.home.total:g.scores.away.total);r10o+=(isH?g.scores.away.total:g.scores.home.total)});
+
+  // Forma pesata: ultime 6, peso decrescente (più recente = più peso)
+  const last6=fin.slice(-6).reverse();
+  const f6=last6.map(g=>{const isH=g.teams.home.id===tid,my=isH?g.scores.home.total:g.scores.away.total,op=isH?g.scores.away.total:g.scores.home.total;return my>op?'W':'L'});
+  
+  // Performance pesata ultime 10 (recency weight)
+  const l10=fin.slice(-10);let r10=0,r10o=0,r10w=0;
+  l10.forEach((g,i)=>{
+    const isH=g.teams.home.id===tid;
+    const wt=1+i*0.12; // peso crescente per partite più recenti
+    r10+=(isH?g.scores.home.total:g.scores.away.total)*wt;
+    r10o+=(isH?g.scores.away.total:g.scores.home.total)*wt;
+    r10w+=wt;
+  });
+  
   // PPG casa e trasferta separati
   let hPts=0,hOpp=0,hCnt=0,aPts=0,aOpp=0,aCnt=0;
   fin.forEach(g=>{const isH=g.teams.home.id===tid,my=isH?g.scores.home.total:g.scores.away.total,op=isH?g.scores.away.total:g.scores.home.total;if(isH){hPts+=my;hOpp+=op;hCnt++}else{aPts+=my;aOpp+=op;aCnt++}});
+  
   const N=fin.length,ppg=tP/N,opg=tO/N,mm=mg.reduce((s,x)=>s+x,0)/N;
+  
+  // Pace: stima possessi da totale punti (approx 1 punto per possesso)
+  const pace=tt.reduce((s,x)=>s+x,0)/N; // avg total points per game = proxy pace
+  
+  // Varianza punti (per calibrare O/U)
+  const ppgArr=fin.map(g=>{const isH=g.teams.home.id===tid;return isH?g.scores.home.total:g.scores.away.total});
+  const ppgStd=Math.sqrt(ppgArr.reduce((s,x)=>s+(x-ppg)*(x-ppg),0)/N);
+  
+  // Back-to-back: ultima partita giocata (per calcolare fatica)
+  const lastDate=fin.length?new Date(fin[fin.length-1].date):null;
+  const prevDate=fin.length>=2?new Date(fin[fin.length-2].date):null;
+  let b2b=false;
+  if(lastDate&&prevDate){
+    const diffDays=(lastDate-prevDate)/(1000*60*60*24);
+    if(diffDays<=1.5)b2b=true;
+  }
+  
+  // Streak
   let str=0;if(f6.length){const f=f6[0];for(const r of f6){if(r===f)str++;else break}if(f==='L')str=-str}
-  return{ppg,opg,rP:r10/l10.length,rO:r10o/l10.length,wp:w/N,hWP:hN>=3?hW/hN:w/N,aWP:aN>=3?aW/aN:w/N,net:ppg-opg,avgT:tt.reduce((s,x)=>s+x,0)/N,hPpg:hCnt?hPts/hCnt:ppg,hOpg:hCnt?hOpp/hCnt:opg,aPpg:aCnt?aPts/aCnt:ppg,aOpg:aCnt?aOpp/aCnt:opg,std:Math.sqrt(mg.reduce((s,x)=>s+(x-mm)*(x-mm),0)/N),form:f6,streak:str,N,w}
+  
+  // Trend: confronto ultime 5 vs precedenti 5
+  const last5=fin.slice(-5),prev5=fin.slice(-10,-5);
+  let trendPts=0,trendOpp=0;
+  if(last5.length>=3&&prev5.length>=3){
+    const l5p=last5.reduce((s,g)=>{const isH=g.teams.home.id===tid;return s+(isH?g.scores.home.total:g.scores.away.total)},0)/last5.length;
+    const p5p=prev5.reduce((s,g)=>{const isH=g.teams.home.id===tid;return s+(isH?g.scores.home.total:g.scores.away.total)},0)/prev5.length;
+    trendPts=l5p-p5p; // positivo = in miglioramento
+    const l5o=last5.reduce((s,g)=>{const isH=g.teams.home.id===tid;return s+(isH?g.scores.away.total:g.scores.home.total)},0)/last5.length;
+    const p5o=prev5.reduce((s,g)=>{const isH=g.teams.home.id===tid;return s+(isH?g.scores.away.total:g.scores.home.total)},0)/prev5.length;
+    trendOpp=l5o-p5o; // positivo = difesa peggiorata
+  }
+  
+  return{ppg,opg,rP:r10w>0?r10/r10w:ppg,rO:r10w>0?r10o/r10w:opg,wp:w/N,hWP:hN>=3?hW/hN:w/N,aWP:aN>=3?aW/aN:w/N,net:ppg-opg,avgT:pace,hPpg:hCnt?hPts/hCnt:ppg,hOpg:hCnt?hOpp/hCnt:opg,aPpg:aCnt?aPts/aCnt:ppg,aOpg:aCnt?aOpp/aCnt:opg,std:Math.sqrt(mg.reduce((s,x)=>s+(x-mm)*(x-mm),0)/N),ppgStd,form:f6,streak:str,N,w,b2b,lastDate,pace,trendPts,trendOpp}
 }
-function h2h(t,o){const all=Object.values($.g).flat();const m=all.filter(g=>['FT','AOT'].includes(g.status?.short)&&((g.teams.home.id===t&&g.teams.away.id===o)||(g.teams.home.id===o&&g.teams.away.id===t)));let w=0;m.forEach(g=>{const h=g.teams.home.id===t,my=h?g.scores.home.total:g.scores.away.total,op=h?g.scores.away.total:g.scores.home.total;if(my>op)w++});return{w,n:m.length}}
-function bElo(games){const elo={},K=20;games.filter(g=>['FT','AOT'].includes(g.status?.short)&&g.scores?.home?.total!=null).sort((a,b)=>new Date(a.date)-new Date(b.date)||(a.id-b.id)).forEach(g=>{const h=g.teams.home.id,a=g.teams.away.id;if(!elo[h])elo[h]=1500;if(!elo[a])elo[a]=1500;const hs=g.scores.home.total,as=g.scores.away.total,exp=1/(1+Math.pow(10,-(elo[h]+75-elo[a])/400)),res=hs>as?1:hs<as?0:.5,mov=Math.log(Math.abs(hs-as)+1)*2.2/(Math.abs(elo[h]+75-elo[a])*.001+2.2),adj=K*mov*(res-exp);elo[h]+=adj;elo[a]-=adj});return elo}
+
+function h2h(t,o){
+  const all=Object.values($.g).flat();
+  const m=all.filter(g=>['FT','AOT'].includes(g.status?.short)&&((g.teams.home.id===t&&g.teams.away.id===o)||(g.teams.home.id===o&&g.teams.away.id===t)));
+  let w=0,totPts=0;
+  m.forEach(g=>{const h=g.teams.home.id===t,my=h?g.scores.home.total:g.scores.away.total,op=h?g.scores.away.total:g.scores.home.total;if(my>op)w++;totPts+=(g.scores.home.total+g.scores.away.total)});
+  return{w,n:m.length,avgT:m.length?totPts/m.length:0}
+}
+
+function bElo(games){
+  const elo={},K=24; // K leggermente più alto per reattività
+  games.filter(g=>['FT','AOT'].includes(g.status?.short)&&g.scores?.home?.total!=null)
+    .sort((a,b)=>new Date(a.date)-new Date(b.date)||(a.id-b.id))
+    .forEach(g=>{
+      const h=g.teams.home.id,a=g.teams.away.id;
+      if(!elo[h])elo[h]=1500;if(!elo[a])elo[a]=1500;
+      const hs=g.scores.home.total,as=g.scores.away.total;
+      const ha=getHA(g.league?.id||0); // home advantage Elo per lega
+      const exp=1/(1+Math.pow(10,-(elo[h]+ha*15-elo[a])/400));
+      const res=hs>as?1:hs<as?0:.5;
+      const mov=Math.log(Math.abs(hs-as)+1)*2.2/(Math.abs(elo[h]-elo[a])*.001+2.2);
+      const adj=K*mov*(res-exp);
+      elo[h]+=adj;elo[a]-=adj;
+    });
+  return elo;
+}
 
 function pred(hD,aD,hS,aS,stand,odds,elo,game){
   const hid=game.teams.home.id,aid=game.teams.away.id;
+  const lid=game.league?.id||0;
   const hE=elo[hid]||1500,aE=elo[aid]||1500;
-  // 4 modelli
-  const m1=1/(1+Math.pow(10,-(hE-aE+75)/400))*100;
+  const ha=getHA(lid); // home advantage in punti per questa lega
+  
+  // === 4 MODELLI MIGLIORATI ===
+  
+  // M1: Elo (con HA per lega)
+  const m1=1/(1+Math.pow(10,-(hE-aE+ha*15)/400))*100;
+  
+  // M2: Log5 con win% casa/trasferta specifico
   const hwp=cl(.15,hD.hWP,.90),awp=cl(.10,aD.aWP,.85);
   const m2=(hwp*(1-awp))/(hwp*(1-awp)+(1-hwp)*awp)*100;
-  const m3=100/(1+Math.pow(10,-(hD.net-aD.net+3)/12));
+  
+  // M3: Net rating pace-adjusted + trend
+  const hNetAdj=hD.net+(hD.trendPts-hD.trendOpp)*0.3; // include trend recente
+  const aNetAdj=aD.net+(aD.trendPts-aD.trendOpp)*0.3;
+  const m3=100/(1+Math.pow(10,-(hNetAdj-aNetAdj+ha*0.8)/12));
+  
+  // M4: Forma + streak + back-to-back penalty
   const hFW=hD.form.length?hD.form.filter(x=>x==='W').length/hD.form.length:.5;
   const aFW=aD.form.length?aD.form.filter(x=>x==='W').length/aD.form.length:.5;
-  let m4=50+(hFW-aFW)*25+cl(-3,(hD.streak-aD.streak)*.8,3);m4=cl(25,m4,75);
-  let hP=m1*.35+m2*.25+m3*.25+m4*.15;
-  const hh=h2h(hid,aid);if(hh.n>=3)hP+=(hh.w/hh.n-.5)*5;
+  let m4=50+(hFW-aFW)*25+cl(-4,(hD.streak-aD.streak)*.9,4);
+  // Back-to-back penalty: la squadra stanca perde ~2-4 punti
+  if(hD.b2b) m4-=3;
+  if(aD.b2b) m4+=3;
+  m4=cl(25,m4,75);
+  
+  // === BLEND con pesi ===
+  let hP=m1*.35+m2*.22+m3*.28+m4*.15;
+  
+  // H2H adjustment
+  const hh=h2h(hid,aid);
+  if(hh.n>=3) hP+=(hh.w/hh.n-.5)*4;
+  
+  // Classifica adjustment
   const flat=Array.isArray(stand)?stand.flat?.(2)??stand:[];
   const hSt=flat.find(s=>s?.team?.id===hid),aSt=flat.find(s=>s?.team?.id===aid);
-  if(hSt?.position&&aSt?.position)hP+=cl(-2,(aSt.position-hSt.position)*.12,2);
-  hP=Math.round(cl(30,hP,70));const aP=100-hP;
-
-  // Score
-  const fH=Math.round((hD.rP*.6+hD.ppg*.4)*.55+(aD.rO*.6+aD.opg*.4)*.45+1.5);
-  const fA=Math.round((aD.rP*.6+aD.ppg*.4)*.55+(hD.rO*.6+hD.opg*.4)*.45-1.5);
+  if(hSt?.position&&aSt?.position) hP+=cl(-3,(aSt.position-hSt.position)*.15,3);
+  
+  hP=Math.round(cl(28,hP,72));
+  const aP=100-hP;
+  
+  // === SCORE PREDICTION (pace-adjusted) ===
+  // Pace factor: media dei totali dei due team
+  const gamePace=(hD.pace+aD.pace)/2;
+  const paceAdj=gamePace>0?gamePace/200:1; // normalizza
+  
+  // Offensive rating = punti / possessi (approx)
+  const hOff=hD.rP*0.55+hD.ppg*0.45; // weighted recent + season
+  const aOff=aD.rP*0.55+aD.ppg*0.45;
+  const hDef=hD.rO*0.55+hD.opg*0.45; // punti concessi
+  const aDef=aD.rO*0.55+aD.opg*0.45;
+  
+  // Score = (mio attacco vs sua difesa) * pace * home adjustment
+  let fH=Math.round((hOff*0.5+aDef*0.5)*paceAdj+ha/2);
+  let fA=Math.round((aOff*0.5+hDef*0.5)*paceAdj-ha/2);
+  
+  // B2B penalty sul punteggio
+  if(hD.b2b) fH=Math.round(fH*0.97);
+  if(aD.b2b) fA=Math.round(fA*0.97);
+  
+  // Trend: se squadra in miglioramento, boost leggero
+  fH+=Math.round(cl(-2,hD.trendPts*0.15,2));
+  fA+=Math.round(cl(-2,aD.trendPts*0.15,2));
+  
   const pT=fH+fA,sp=fH-fA;
-
-  // O/U
-  const avgT=(hD.avgT+aD.avgT)/2,mL=Math.round(avgT/5)*5;
-  const oP=Math.round(cl(15,100/(1+Math.pow(10,-(pT-mL)/15))*100,85));
-
-  // Multigol Casa/Ospite
-  const overH=cl(20,Math.round(100/(1+Math.pow(10,-(fH-hD.ppg*.95)/8))*100),80);
-  const overA=cl(20,Math.round(100/(1+Math.pow(10,-(fA-aD.ppg*.95)/8))*100),80);
-  const mgH=fH>=hD.ppg?`Over ${Math.round(hD.ppg-3)}.5`:`Under ${Math.round(hD.ppg+2)}.5`;
-  const mgA=fA>=aD.ppg?`Over ${Math.round(aD.ppg-3)}.5`:`Under ${Math.round(aD.ppg+2)}.5`;
+  
+  // === O/U MIGLIORATO (con varianza) ===
+  // Usa la varianza dei totali per calibrare meglio
+  const avgT=(hD.avgT+aD.avgT)/2;
+  const combinedStd=Math.sqrt(hD.ppgStd*hD.ppgStd+aD.ppgStd*aD.ppgStd);
+  const mL=Math.round(avgT/5)*5;
+  
+  // Z-score: quanto il predicted total si discosta dalla media
+  const zScore=combinedStd>0?(pT-mL)/Math.max(combinedStd,5):0;
+  // Sigmoide calibrata con varianza
+  const oP=Math.round(cl(12,50+zScore*18,88));
+  
+  // H2H totale: se gli scontri diretti tendono Over/Under
+  let ouAdj=0;
+  if(hh.n>=3&&hh.avgT>0){
+    if(hh.avgT>mL+5) ouAdj=3;
+    else if(hh.avgT<mL-5) ouAdj=-3;
+  }
+  const oPFinal=cl(12,oP+ouAdj,88);
+  
+  // === MULTIGOL SQUADRA (con std) ===
+  // Usa la deviazione standard per range più realistici
+  const hStd=hD.ppgStd||8;
+  const aStd=aD.ppgStd||8;
+  
+  // Range multigol: predicted points ± 0.5*std
+  const hMid=fH, aMid=fA;
+  const mgHL=Math.max(Math.round(hMid-hStd*0.6),fH-12);
+  const mgHU=Math.round(hMid+hStd*0.4);
+  const mgAL=Math.max(Math.round(aMid-aStd*0.6),fA-12);
+  const mgAU=Math.round(aMid+aStd*0.4);
+  
+  // Over/Under per squadra usando la previsione vs media
+  const overH=cl(25,Math.round(50+(fH-hD.ppg)/Math.max(hStd,3)*22),78);
+  const overA=cl(25,Math.round(50+(fA-aD.ppg)/Math.max(aStd,3)*22),78);
+  
+  const mgH=fH>=hD.ppg?`Over ${Math.round(hD.ppg-2)}.5`:`Under ${Math.round(hD.ppg+2)}.5`;
+  const mgA=fA>=aD.ppg?`Over ${Math.round(aD.ppg-2)}.5`:`Under ${Math.round(aD.ppg+2)}.5`;
   const mgHP=fH>=hD.ppg?overH:100-overH;
   const mgAP=fA>=aD.ppg?overA:100-overA;
-
-  // Handicap
+  
+  // === HANDICAP migliorato ===
   const hcL=Math.max(1.5,Math.round(Math.abs(sp)*2)/2);
   const hcT=sp>=0?game.teams.home.name:game.teams.away.name;
-  const hcC=cl(40,50+Math.abs(sp)*2,72);
-
-  // Concordance
+  // Confidence basata su convergenza modelli + spread size
+  const hcC=cl(35,50+Math.abs(sp)*1.5+(hP>55||aP>55?5:0),75);
+  
+  // === CONCORDANZA ===
   const sv=p=>p>55?'H':p<45?'A':'X',sides=[sv(m1),sv(m2),sv(m3),sv(m4)];
   const conc=Math.max(sides.filter(x=>x==='H').length,sides.filter(x=>x==='A').length);
-  const conf=cl(25,Math.round(80-(Math.max(m1,m2,m3,m4)-Math.min(m1,m2,m3,m4))*.5+(conc>=3?10:0)),82);
+  const spread=Math.max(m1,m2,m3,m4)-Math.min(m1,m2,m3,m4);
+  const conf=cl(25,Math.round(80-spread*.4+(conc>=3?12:conc>=2?4:0)-(hD.b2b||aD.b2b?5:0)),82);
   const confL=conf>=65?'Alta':conf>=45?'Media':'Bassa';
-
-  // Odds
+  
+  // === VALUE BET (soglia 3% invece di 5%) ===
   let bkH=null,bkA=null,value=null;
-  if(odds?.length){odds.forEach(o=>{(o.bookmakers||[]).forEach(b=>{(b.bets||[]).forEach(bt=>{if(bt.name==='Home/Away'||bt.name==='Match Winner')(bt.values||[]).forEach(v=>{if(v.value==='Home'&&!bkH)bkH=parseFloat(v.odd);if(v.value==='Away'&&!bkA)bkA=parseFloat(v.odd)})})})});
-    if(bkH&&bkA){const iH=1/bkH*100,iA=1/bkA*100,eH=hP-iH,eA=aP-iA;if(eH>5)value={e:eH,p:hP,bp:iH,o:bkH,t:game.teams.home.name};else if(eA>5)value={e:eA,p:aP,bp:iA,o:bkA,t:game.teams.away.name}}}
-
+  if(odds?.length){
+    odds.forEach(o=>{(o.bookmakers||[]).forEach(b=>{(b.bets||[]).forEach(bt=>{if(bt.name==='Home/Away'||bt.name==='Match Winner')(bt.values||[]).forEach(v=>{if(v.value==='Home'&&!bkH)bkH=parseFloat(v.odd);if(v.value==='Away'&&!bkA)bkA=parseFloat(v.odd)})})})});
+    if(bkH&&bkA){
+      const totM=1/bkH+1/bkA; // margine bookmaker
+      const iH=(1/bkH/totM)*100,iA=(1/bkA/totM)*100; // prob senza margine
+      const eH=hP-iH,eA=aP-iA;
+      if(eH>3) value={e:eH,p:hP,bp:iH,o:bkH,t:game.teams.home.name};
+      else if(eA>3) value={e:eA,p:aP,bp:iA,o:bkA,t:game.teams.away.name};
+    }
+  }
+  
   const fav=hP>=50?game.teams.home.name:game.teams.away.name,favP=Math.max(hP,aP);
   const pick=hP>=50?'1':'2';
-  const ouPick=oP>55?'OVER':'UNDER';
-  const ouL=[];for(let x=-10;x<=10;x+=5){const l=mL+x;if(l<80||l>400)continue;ouL.push({l,o:Math.round(cl(10,100/(1+Math.pow(10,-(pT-l)/15))*100,90)),m:x===0})}
-
-  // Reasons
+  const ouPick=oPFinal>55?'OVER':'UNDER';
+  const ouL=[];for(let x=-15;x<=15;x+=5){const l=mL+x;if(l<60||l>500)continue;
+    const z=combinedStd>0?(pT-l)/Math.max(combinedStd,5):0;
+    ouL.push({l,o:Math.round(cl(8,50+z*18,92)),m:x===0});}
+  
+  // === REASONS (più dettagliate) ===
   const reas=[];
-  if(Math.abs(hE-aE)>80)reas.push(`Elo ${Math.round(hE)} vs ${Math.round(aE)}: ${hE>aE?game.teams.home.name:game.teams.away.name} nettamente superiore`);
+  if(Math.abs(hE-aE)>80)reas.push(`Elo ${Math.round(hE)} vs ${Math.round(aE)}: ${hE>aE?game.teams.home.name:game.teams.away.name} superiore`);
   else reas.push(`Elo equilibrato (${Math.round(hE)} vs ${Math.round(aE)})`);
-  if(Math.abs(hD.net-aD.net)>3)reas.push(`Net rating ${fav} +${fm(Math.abs(hD.net-aD.net),1)} punti/partita`);
+  if(Math.abs(hD.net-aD.net)>3)reas.push(`Net rating ${fav} +${fm(Math.abs(hD.net-aD.net),1)}`);
   reas.push(`Forma: ${game.teams.home.name} ${(hFW*100).toFixed(0)}%W, ${game.teams.away.name} ${(aFW*100).toFixed(0)}%W`);
-  if(hh.n>=2)reas.push(`H2H: ${hh.n} scontri, ${game.teams.home.name} ${hh.w}V`);
-
-  return{hP,aP,fH,fA,pT,sp,m1:Math.round(m1*10)/10,m2:Math.round(m2*10)/10,m3:Math.round(m3*10)/10,m4:Math.round(m4*10)/10,conc,conf,confL,mL,oP,ouL,ouPick,hD,aD,hE,aE,fav,favP,bkH,bkA,value,pick,hcT,hcL,hcC,reas,hh,hFW,aFW,mgH,mgA,mgHP,mgAP}
+  if(hD.b2b)reas.push(`⚠️ ${game.teams.home.name} back-to-back (affaticata)`);
+  if(aD.b2b)reas.push(`⚠️ ${game.teams.away.name} back-to-back (affaticata)`);
+  if(hD.trendPts>3)reas.push(`📈 ${game.teams.home.name} in crescita (+${fm(hD.trendPts,1)} ppg trend)`);
+  if(aD.trendPts>3)reas.push(`📈 ${game.teams.away.name} in crescita (+${fm(aD.trendPts,1)} ppg trend)`);
+  if(hh.n>=2)reas.push(`H2H: ${hh.n} scontri, ${game.teams.home.name} ${hh.w}V${hh.avgT>0?' (media '+Math.round(hh.avgT)+' pts)':''}`);
+  
+  return{hP,aP,fH,fA,pT,sp,m1:Math.round(m1*10)/10,m2:Math.round(m2*10)/10,m3:Math.round(m3*10)/10,m4:Math.round(m4*10)/10,conc,conf,confL,mL,oP:oPFinal,ouL,ouPick,hD,aD,hE,aE,fav,favP,bkH,bkA,value,pick,hcT,hcL,hcC,reas,hh,hFW,aFW,mgH,mgA,mgHP,mgAP}
 }
 
 // ═══ RENDER ═══
