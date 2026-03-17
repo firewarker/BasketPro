@@ -600,28 +600,36 @@ function buildOddsLab(odds,R){
 // ═══ v4: REGRESSION SCORE ═══
 function calcRegression(R,oLab,game){
   const factors=[];let totS=0,totW=0;
-  // 1. Elo gap (25%)
-  {const w=25;const gap=Math.abs(R.hE-R.aE);const s=cl(0,gap/200*100,100);
-  factors.push({n:'⚡ Elo Gap',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-  // 2. Net Rating diff (20%)
-  {const w=20;const diff=Math.abs(R.hD.net-R.aD.net);const s=cl(0,diff/12*100,100);
-  factors.push({n:'📊 Net Rating',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
+  
+  // 1. Probabilità del modello (20%) — quanto è convinto il modello
+  // Nel basket 28-72 è il range. 69% è MOLTO alto.
+  {const w=20;const favP=R.favP||50;const s=cl(0,(favP-40)/(30)*100,100); // 40%=0, 70%=100
+  factors.push({n:'🎯 Prob Modello',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
+  
+  // 2. Concordanza modelli (20%) — quanti dei 5 modelli concordano
+  {const w=20;const s=cl(0,(R.conc||0)/5*100,100); // 5/5=100, 3/5=60, 2/5=40
+  factors.push({n:'🤝 Concordanza',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
+  
   // 3. Conferma Quote (20%)
-  {const w=20;let s=50;if(oLab){const bkFav=R.hP>=50?oLab.consensus.home:oLab.consensus.away;s=cl(0,(bkFav-25)/(45)*100,100)}else if(R.bkH){const totM=1/R.bkH+1/R.bkA;const bkFav=R.hP>=50?(1/R.bkH/totM)*100:(1/R.bkA/totM)*100;s=cl(0,(bkFav-25)/45*100,100)}
+  {const w=20;let s=50;if(oLab){const bkFav=R.hP>=50?oLab.consensus.home:oLab.consensus.away;s=cl(0,(bkFav-30)/(35)*100,100)}else if(R.bkH){const totM=1/R.bkH+1/R.bkA;const bkFav=R.hP>=50?(1/R.bkH/totM)*100:(1/R.bkA/totM)*100;s=cl(0,(bkFav-30)/35*100,100)}
   factors.push({n:'💰 Conferma Quote',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-  // 4. Forma recente (15%)
-  {const w=15;const favFW=R.hP>=50?R.hFW:R.aFW;const s=cl(0,((favFW-0.3)/0.5)*100,100);
+  
+  // 4. Net Rating diff (15%) — riscalato per basket (diff 3+ è significativa)
+  {const w=15;const diff=Math.abs(R.hD.net-R.aD.net);const s=cl(0,diff/8*100,100);
+  factors.push({n:'📊 Net Rating',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
+  
+  // 5. Forma recente (15%)
+  {const w=15;const favFW=R.hP>=50?R.hFW:R.aFW;const s=cl(0,((favFW-0.2)/0.6)*100,100);
   factors.push({n:'🔥 Forma',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-  // 5. Difesa (10%)
-  {const w=10;const favDef=R.hP>=50?R.hD.opg:R.aD.opg;const avg=(R.hD.avgT+R.aD.avgT)/4;const s=cl(0,(1-(favDef-avg*0.7)/(avg*0.6))*100,100);
-  factors.push({n:'🛡️ Difesa',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
+  
   // 6. Smart Money (10%)
   {const w=10;let s=50;if(oLab&&oLab.steams.length){const favDir=R.hP>=50?'home':'away';const fav=oLab.steams.find(x=>x.dir===favDir);if(fav)s=80+parseFloat(fav.d);const und=oLab.steams.find(x=>x.dir!==favDir);if(und)s=20}s=cl(0,s,100);
   factors.push({n:'🔥 Smart Money',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
+  
   const final=totW>0?totS/totW:50;
   let grade,gc;
-  if(final>=80){grade='A+';gc='var(--green)'}else if(final>=70){grade='A';gc='var(--teal)'}else if(final>=60){grade='B+';gc='var(--blue)'}else if(final>=50){grade='B';gc='var(--gold)'}else if(final>=40){grade='C';gc='var(--red)'}else{grade='D';gc='var(--red)'}
-  const rec=final>=70?'FORTE':final>=55?'GIOCABILE':'EVITARE';
+  if(final>=78){grade='A+';gc='var(--green)'}else if(final>=68){grade='A';gc='var(--teal)'}else if(final>=58){grade='B+';gc='var(--blue)'}else if(final>=48){grade='B';gc='var(--gold)'}else if(final>=38){grade='C';gc='var(--red)'}else{grade='D';gc='var(--red)'}
+  const rec=final>=68?'FORTE':final>=50?'GIOCABILE':'EVITARE';
   return{score:Math.round(final),grade,gc,rec,factors,favName:R.fav}
 }
 
@@ -791,7 +799,7 @@ function renderA(g,R,el,aiId,cons,reg,oLab,vals){
     <div class="sec"><button class="sec-btn" onclick="tS(this)">📖 Guida — Come usare BasketPro <span class="sec-arr">▼</span></button><div class="sec-body"><div class="sec-inner">
       <div class="guide-panel" style="padding:0;border:none;background:transparent">
         <div class="guide-step"><div class="guide-step-title" style="color:var(--teal)">1 · 🏆 CONSENSUS ENGINE</div><div class="guide-step-desc">Fonde Modello AI, Bookmakers, Regressione e Smart Money. Se dice <b>MASSIMA</b> con accordo ≥80% → pick molto solido. Se <b>BASSA</b> → evita.</div></div>
-        <div class="guide-step"><div class="guide-step-title" style="color:var(--violet)">2 · 📊 REGRESSION SCORE</div><div class="guide-step-desc">Punteggio 0-100 con grado A+→D. Elo, Net Rating, Quote, Forma, Difesa, Smart Money. <b>A/A+</b> = forte. <b>C/D</b> = evita in multipla.</div></div>
+        <div class="guide-step"><div class="guide-step-title" style="color:var(--violet)">2 · 📊 REGRESSION SCORE</div><div class="guide-step-desc">Misura la <b>qualità del pronostico</b>, non la forza della squadra. 6 fattori: Prob Modello (20%), Concordanza 5 modelli (20%), Conferma Quote (20%), Net Rating (15%), Forma (15%), Smart Money (10%). <b>A/A+</b> = forte. <b>C/D</b> = evita in multipla.</div></div>
         <div class="guide-step"><div class="guide-step-title" style="color:var(--green)">3 · 📈 OVER/UNDER</div><div class="guide-step-desc"><b>Gaussian CDF</b> + Over Rate storico (% partite che vanno Over per ogni squadra) + H2H totali + Pace Matchup. σ bassa = prevedibile, alta = volatile. Linea a .5 per precisione.</div></div>
         <div class="guide-step"><div class="guide-step-title" style="color:var(--gold)">4 · 💰 VALUE BET + KELLY</div><div class="guide-step-desc">Edge positivo (verde) = value bet. Il <b>Kelly%</b> indica il bankroll da puntare. Mostra il bookmaker con la quota migliore.</div></div>
         <div class="guide-step"><div class="guide-step-title" style="color:var(--blue)">5 · 🔬 5 MODELLI</div><div class="guide-step-desc"><b>Elo</b> (28%), <b>Log5</b> (18%), <b>Net Rating</b> (22%), <b>Forma+Riposo</b> (12%), <b>Pythagorean</b> (20%). Il Pyth è il win% atteso dai punti fatti/subiti (esponente Morey 13.91). 4-5 modelli concordi = alta affidabilità.</div></div>
