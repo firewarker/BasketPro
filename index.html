@@ -341,7 +341,19 @@ function anG(games,tid){
   const fin=games.filter(g=>['FT','AOT'].includes(g.status?.short)&&g.scores?.home?.total!=null).sort((a,b)=>new Date(a.date)-new Date(b.date)||(a.id-b.id));
   if(!fin.length)return null;
   let tP=0,tO=0,w=0,hW=0,hN=0,aW=0,aN=0;const mg=[],tt=[];
-  fin.forEach(g=>{const isH=g.teams.home.id===tid,my=isH?g.scores.home.total:g.scores.away.total,op=isH?g.scores.away.total:g.scores.home.total;tP+=my;tO+=op;mg.push(my-op);tt.push(my+op);if(my>op)w++;if(isH){hN++;if(my>op)hW++}else{aN++;if(my>op)aW++}});
+  // v5: ATS, Over rate, Clutch
+  let atsW=0,atsN=0,overN=0,clutchW=0,clutchN=0;
+  // v5: Pythagorean — sum of points^13.91
+  let sumPtsExp=0,sumOppExp=0;
+  const EXP=13.91; // Pythagorean exponent for basketball (Morey)
+  
+  fin.forEach(g=>{const isH=g.teams.home.id===tid,my=isH?g.scores.home.total:g.scores.away.total,op=isH?g.scores.away.total:g.scores.home.total;tP+=my;tO+=op;mg.push(my-op);const tot=my+op;tt.push(tot);if(my>op)w++;if(isH){hN++;if(my>op)hW++}else{aN++;if(my>op)aW++}
+    // Pythagorean
+    sumPtsExp+=Math.pow(my,EXP);sumOppExp+=Math.pow(op,EXP);
+    // Clutch: partite decise da ≤5 punti
+    if(Math.abs(my-op)<=5){clutchN++;if(my>op)clutchW++}
+  });
+  
   const last6=fin.slice(-6).reverse();
   const f6=last6.map(g=>{const isH=g.teams.home.id===tid,my=isH?g.scores.home.total:g.scores.away.total,op=isH?g.scores.away.total:g.scores.home.total;return my>op?'W':'L'});
   const l10=fin.slice(-10);let r10=0,r10o=0,r10w=0;
@@ -352,12 +364,21 @@ function anG(games,tid){
   const pace=tt.reduce((s,x)=>s+x,0)/N;
   const ppgArr=fin.map(g=>{const isH=g.teams.home.id===tid;return isH?g.scores.home.total:g.scores.away.total});
   const ppgStd=Math.sqrt(ppgArr.reduce((s,x)=>s+(x-ppg)*(x-ppg),0)/N);
-  // v4: Varianza dei totali di squadra per O/U
   const totArr=fin.map(g=>g.scores.home.total+g.scores.away.total);
   const totStd=Math.sqrt(totArr.reduce((s,x)=>s+(x-pace)*(x-pace),0)/N);
+  
+  // v5: Rest days — giorni dall'ultima partita (non solo b2b)
   const lastDate=fin.length?new Date(fin[fin.length-1].date):null;
   const prevDate=fin.length>=2?new Date(fin[fin.length-2].date):null;
-  let b2b=false;if(lastDate&&prevDate){if((lastDate-prevDate)/(1000*60*60*24)<=1.5)b2b=true}
+  let b2b=false,restDays=3;
+  if(lastDate){
+    const now=new Date();restDays=Math.max(0,(now-lastDate)/(1000*60*60*24));
+    if(prevDate&&(lastDate-prevDate)/(1000*60*60*24)<=1.5)b2b=true;
+  }
+  // Rest multiplier: 0-1d=0.94, 1-2d=0.97, 2-3d=1.0, 3-5d=1.02, 5+d=1.03
+  let restMult=1.0;
+  if(restDays<1)restMult=0.94;else if(restDays<2)restMult=0.97;else if(restDays<3)restMult=1.0;else if(restDays<5)restMult=1.02;else restMult=1.03;
+  
   let str=0;if(f6.length){const f=f6[0];for(const r of f6){if(r===f)str++;else break}if(f==='L')str=-str}
   const last5=fin.slice(-5),prev5=fin.slice(-10,-5);let trendPts=0,trendOpp=0;
   if(last5.length>=3&&prev5.length>=3){
@@ -368,7 +389,16 @@ function anG(games,tid){
     const p5o=prev5.reduce((s,g)=>{const isH=g.teams.home.id===tid;return s+(isH?g.scores.away.total:g.scores.home.total)},0)/prev5.length;
     trendOpp=l5o-p5o;
   }
-  return{ppg,opg,rP:r10w>0?r10/r10w:ppg,rO:r10w>0?r10o/r10w:opg,wp:w/N,hWP:hN>=3?hW/hN:w/N,aWP:aN>=3?aW/aN:w/N,net:ppg-opg,avgT:pace,hPpg:hCnt?hPts/hCnt:ppg,hOpg:hCnt?hOpp/hCnt:opg,aPpg:aCnt?aPts/aCnt:ppg,aOpg:aCnt?aOpp/aCnt:opg,std:Math.sqrt(mg.reduce((s,x)=>s+(x-mm)*(x-mm),0)/N),ppgStd,totStd,form:f6,streak:str,N,w,b2b,lastDate,pace,trendPts,trendOpp}
+  
+  // v5: Over rate per squadra (% partite che vanno Over la media)
+  const avgTotal=pace;
+  const overCount=totArr.filter(t=>t>avgTotal).length;
+  const overRate=N>0?overCount/N:0.5;
+  
+  // v5: Pythagorean expected win%
+  const pythWP=sumPtsExp+sumOppExp>0?sumPtsExp/(sumPtsExp+sumOppExp):0.5;
+  
+  return{ppg,opg,rP:r10w>0?r10/r10w:ppg,rO:r10w>0?r10o/r10w:opg,wp:w/N,hWP:hN>=3?hW/hN:w/N,aWP:aN>=3?aW/aN:w/N,net:ppg-opg,avgT:pace,hPpg:hCnt?hPts/hCnt:ppg,hOpg:hCnt?hOpp/hCnt:opg,aPpg:aCnt?aPts/aCnt:ppg,aOpg:aCnt?aOpp/aCnt:opg,std:Math.sqrt(mg.reduce((s,x)=>s+(x-mm)*(x-mm),0)/N),ppgStd,totStd,form:f6,streak:str,N,w,b2b,lastDate,pace,trendPts,trendOpp,restDays,restMult,overRate,pythWP,clutchW,clutchN}
 }
 
 function h2h(t,o){
@@ -416,8 +446,12 @@ function pred(hD,aD,hS,aS,stand,odds,elo,game){
   if(hD.b2b) m4-=3;
   if(aD.b2b) m4+=3;
   m4=cl(25,m4,75);
+  // M5: Pythagorean Win% (NUOVO — Morey exponent 13.91)
+  const hPyth=hD.pythWP||0.5,aPyth=aD.pythWP||0.5;
+  const m5=(hPyth*(1-aPyth))/(hPyth*(1-aPyth)+(1-hPyth)*aPyth)*100;
 
-  let hP=m1*.35+m2*.22+m3*.28+m4*.15;
+  // === BLEND 5 modelli (ricalibrato) ===
+  let hP=m1*.28+m2*.18+m3*.22+m4*.12+m5*.20;
   const hh=h2h(hid,aid);
   if(hh.n>=3) hP+=(hh.w/hh.n-.5)*4;
   const flat=Array.isArray(stand)?stand.flat?.(2)??stand:[];
@@ -426,20 +460,23 @@ function pred(hD,aD,hS,aS,stand,odds,elo,game){
   hP=Math.round(cl(28,hP,72));
   const aP=100-hP;
 
-  // === SCORE PREDICTION ===
+  // === SCORE PREDICTION (v5: rest + pace matchup) ===
   const gamePace=(hD.pace+aD.pace)/2;
   const paceAdj=gamePace>0?gamePace/200:1;
   const hOff=hD.rP*0.55+hD.ppg*0.45;
   const aOff=aD.rP*0.55+aD.ppg*0.45;
   const hDef=hD.rO*0.55+hD.opg*0.45;
   const aDef=aD.rO*0.55+aD.opg*0.45;
-  let fH=Math.round((hOff*0.5+aDef*0.5)*paceAdj+ha/2);
-  let fA=Math.round((aOff*0.5+hDef*0.5)*paceAdj-ha/2);
-  if(hD.b2b) fH=Math.round(fH*0.97);
-  if(aD.b2b) fA=Math.round(fA*0.97);
+  const hRest=hD.restMult||1,aRest=aD.restMult||1;
+  const paceMatchup=(hD.pace*0.5+aD.pace*0.5)/Math.max(gamePace,1);
+  let fH=Math.round((hOff*0.5+aDef*0.5)*paceAdj*paceMatchup*hRest+ha/2);
+  let fA=Math.round((aOff*0.5+hDef*0.5)*paceAdj*paceMatchup*aRest-ha/2);
   fH+=Math.round(cl(-2,hD.trendPts*0.15,2));
   fA+=Math.round(cl(-2,aD.trendPts*0.15,2));
   const pT=fH+fA,sp=fH-fA;
+  // v5: Confidence interval (±1 std)
+  const scoreStd=Math.sqrt((hD.ppgStd||8)*(hD.ppgStd||8)+(aD.ppgStd||8)*(aD.ppgStd||8))/Math.SQRT2;
+  const ciLow=Math.round(pT-scoreStd),ciHigh=Math.round(pT+scoreStd);
 
   // === v4: O/U con Gaussian CDF — MOLTO più preciso ===
   // Combina varianza dei totali di entrambe le squadre
@@ -455,8 +492,9 @@ function pred(hD,aD,hS,aS,stand,odds,elo,game){
   const zOU=(mL-effectiveMean)/effectiveStd;
   const oP=Math.round(cl(10,(1-normCDF(zOU))*100,90)); // P(totale > linea)
   
-  // H2H adjustment
-  let ouAdj=0;
+  // H2H + Over Rate adjustment
+  const avgOverRate=((hD.overRate||0.5)+(aD.overRate||0.5))/2;
+  let ouAdj=Math.round((avgOverRate-0.5)*10); // -5 to +5 based on team Over tendency
   if(hh.n>=3&&hh.avgT>0){
     if(hh.avgT>mL+8) ouAdj=4;
     else if(hh.avgT>mL+3) ouAdj=2;
@@ -489,10 +527,11 @@ function pred(hD,aD,hS,aS,stand,odds,elo,game){
   const hcC=cl(35,50+Math.abs(sp)*1.5+(hP>55||aP>55?5:0),75);
 
   // === CONCORDANZA ===
-  const sv=p=>p>55?'H':p<45?'A':'X',sides=[sv(m1),sv(m2),sv(m3),sv(m4)];
+  // === CONCORDANZA 5 modelli ===
+  const sv=p=>p>55?'H':p<45?'A':'X',sides=[sv(m1),sv(m2),sv(m3),sv(m4),sv(m5)];
   const conc=Math.max(sides.filter(x=>x==='H').length,sides.filter(x=>x==='A').length);
-  const spread=Math.max(m1,m2,m3,m4)-Math.min(m1,m2,m3,m4);
-  const conf=cl(25,Math.round(80-spread*.4+(conc>=3?12:conc>=2?4:0)-(hD.b2b||aD.b2b?5:0)),82);
+  const spread=Math.max(m1,m2,m3,m4,m5)-Math.min(m1,m2,m3,m4,m5);
+  const conf=cl(25,Math.round(82-spread*.35+(conc>=4?15:conc>=3?7:0)-(hD.b2b||aD.b2b?4:0)),85);
   const confL=conf>=65?'Alta':conf>=45?'Media':'Bassa';
 
   // === VALUE BET ===
@@ -516,13 +555,15 @@ function pred(hD,aD,hS,aS,stand,odds,elo,game){
   else reas.push(`Elo equilibrato (${Math.round(hE)} vs ${Math.round(aE)})`);
   if(Math.abs(hD.net-aD.net)>3)reas.push(`Net rating ${fav} +${fm(Math.abs(hD.net-aD.net),1)}`);
   reas.push(`Forma: ${game.teams.home.name} ${(hFW*100).toFixed(0)}%W, ${game.teams.away.name} ${(aFW*100).toFixed(0)}%W`);
+  if(hD.restDays!=null&&hD.restDays<1.5)reas.push(`😴 ${game.teams.home.name} riposo ${hD.restDays.toFixed(0)}g`);
+  if(aD.restDays!=null&&aD.restDays<1.5)reas.push(`😴 ${game.teams.away.name} riposo ${aD.restDays.toFixed(0)}g`);
   if(hD.b2b)reas.push(`⚠️ ${game.teams.home.name} back-to-back`);
   if(aD.b2b)reas.push(`⚠️ ${game.teams.away.name} back-to-back`);
-  if(hD.trendPts>3)reas.push(`📈 ${game.teams.home.name} in crescita (+${fm(hD.trendPts,1)} ppg trend)`);
-  if(aD.trendPts>3)reas.push(`📈 ${game.teams.away.name} in crescita (+${fm(aD.trendPts,1)} ppg trend)`);
+  if(hD.trendPts>3)reas.push(`📈 ${game.teams.home.name} +${fm(hD.trendPts,1)} ppg trend`);
+  if(aD.trendPts>3)reas.push(`📈 ${game.teams.away.name} +${fm(aD.trendPts,1)} ppg trend`);
   if(hh.n>=2)reas.push(`H2H: ${hh.n} scontri, ${game.teams.home.name} ${hh.w}V${hh.avgT>0?' (media '+Math.round(hh.avgT)+' pts)':''}`);
 
-  return{hP,aP,fH,fA,pT,sp,m1:Math.round(m1*10)/10,m2:Math.round(m2*10)/10,m3:Math.round(m3*10)/10,m4:Math.round(m4*10)/10,conc,conf,confL,mL,oP:oPFinal,ouL,ouPick,hD,aD,hE,aE,fav,favP,bkH,bkA,value,pick,hcT,hcL,hcC,reas,hh,hFW,aFW,mgH,mgA,mgHP,mgAP,effectiveMean,effectiveStd}
+  return{hP,aP,fH,fA,pT,sp,m1:Math.round(m1*10)/10,m2:Math.round(m2*10)/10,m3:Math.round(m3*10)/10,m4:Math.round(m4*10)/10,m5:Math.round(m5*10)/10,conc,conf,confL,mL,oP:oPFinal,ouL,ouPick,hD,aD,hE,aE,fav,favP,bkH,bkA,value,pick,hcT,hcL,hcC,reas,hh,hFW,aFW,mgH,mgA,mgHP,mgAP,effectiveMean,effectiveStd,ciLow,ciHigh,scoreStd}
 }
 
 // ═══ v4: ODDS LAB ═══
@@ -676,7 +717,7 @@ function renderA(g,R,el,aiId,cons,reg,oLab,vals){
     valHtml=`<div class="val-card yes"><div class="val-tag" style="color:var(--green)">💰 VALUE BET</div><div class="val-main" style="color:var(--green)">${R.value.t} @${R.value.o}</div><div class="val-sub">Nostra: ${fm(R.value.p,1)}% · Book: ${fm(R.value.bp,1)}% · Edge: +${fm(R.value.e,1)}%</div></div>`;
   }
 
-  const stats=[{l:'PPG',h:fm(R.hD.ppg),a:fm(R.aD.ppg),hi:1},{l:'Subiti',h:fm(R.hD.opg),a:fm(R.aD.opg),lo:1},{l:'Ult.10',h:fm(R.hD.rP),a:fm(R.aD.rP),hi:1},{l:'Net',h:fm(R.hD.net),a:fm(R.aD.net),hi:1},{l:'Win%',h:fm(R.hD.wp*100,0)+'%',a:fm(R.aD.wp*100,0)+'%',hi:1},{l:'Casa',h:fm(R.hD.hWP*100,0)+'%',a:fm(R.aD.aWP*100,0)+'%',hi:1},{l:'Elo',h:''+Math.round(R.hE),a:''+Math.round(R.aE),hi:1},{l:'PPG C.',h:fm(R.hD.hPpg),a:fm(R.aD.aPpg),hi:1}];
+  const stats=[{l:'PPG',h:fm(R.hD.ppg),a:fm(R.aD.ppg),hi:1},{l:'Subiti',h:fm(R.hD.opg),a:fm(R.aD.opg),lo:1},{l:'Ult.10',h:fm(R.hD.rP),a:fm(R.aD.rP),hi:1},{l:'Net',h:fm(R.hD.net),a:fm(R.aD.net),hi:1},{l:'Win%',h:fm(R.hD.wp*100,0)+'%',a:fm(R.aD.wp*100,0)+'%',hi:1},{l:'Pyth%',h:fm((R.hD.pythWP||.5)*100,0)+'%',a:fm((R.aD.pythWP||.5)*100,0)+'%',hi:1},{l:'Casa',h:fm(R.hD.hWP*100,0)+'%',a:fm(R.aD.aWP*100,0)+'%',hi:1},{l:'Elo',h:''+Math.round(R.hE),a:''+Math.round(R.aE),hi:1},{l:'Over%',h:fm((R.hD.overRate||.5)*100,0)+'%',a:fm((R.aD.overRate||.5)*100,0)+'%',hi:0},{l:'Clutch',h:R.hD.clutchN?R.hD.clutchW+'/'+R.hD.clutchN:'—',a:R.aD.clutchN?R.aD.clutchW+'/'+R.aD.clutchN:'—',hi:0},{l:'Riposo',h:R.hD.restDays!=null?fm(R.hD.restDays,0)+'g':'—',a:R.aD.restDays!=null?fm(R.aD.restDays,0)+'g':'—',hi:1}];
   let stH='';stats.forEach(r=>{const hN2=parseFloat(r.h)||0,aN2=parseFloat(r.a)||0,h2=r.hi?hN2>aN2:r.lo?(hN2<aN2&&hN2>0):0,a2=r.hi?aN2>hN2:r.lo?(aN2<hN2&&aN2>0):0;stH+=`<div class="st-r"><div class="st-v l${h2?' hi':''}">${r.h}</div><div class="st-lab">${r.l}</div><div class="st-v r${a2?' hi':''}">${r.a}</div></div>`});
 
   el.innerHTML=`
@@ -722,7 +763,7 @@ function renderA(g,R,el,aiId,cons,reg,oLab,vals){
       </div>
     </div>
 
-    <div class="pred"><div class="pred-box"><div class="pred-lbl">🏀 Risultato Previsto</div><div class="pred-val">${R.fH} <span style="color:var(--w4)">–</span> ${R.fA}</div><div class="pred-sub">Totale: ${R.pT} · Spread: ${R.sp>0?'+':''}${R.sp}</div></div></div>
+    <div class="pred"><div class="pred-box"><div class="pred-lbl">🏀 Risultato Previsto</div><div class="pred-val">${R.fH} <span style="color:var(--w4)">–</span> ${R.fA}</div><div class="pred-sub">Totale: ${R.pT} · Spread: ${R.sp>0?'+':''}${R.sp}</div><div style="font-size:.68rem;color:var(--w4);margin-top:4px">Range: ${R.ciLow||'?'}–${R.ciHigh||'?'} pts (±${R.scoreStd?R.scoreStd.toFixed(0):'?'})</div></div></div>
 
     ${valHtml}
 
@@ -732,12 +773,13 @@ function renderA(g,R,el,aiId,cons,reg,oLab,vals){
 
     <div class="sec"><button class="sec-btn" onclick="tS(this)">📈 Over/Under dettaglio <span class="sec-arr">▼</span></button><div class="sec-body"><div class="sec-inner"><div style="font-size:.68rem;color:var(--w4);margin-bottom:8px">Linea: ${R.mL} · Totale previsto: ${R.pT} · μ=${R.effectiveMean.toFixed(1)} · σ=${R.effectiveStd.toFixed(1)} · Gaussian CDF</div><div class="ou-grid">${R.ouL.map(x=>`<div class="ou-item${x.m?' main':''}"><div class="ou-val" style="color:${x.o>55?'var(--green)':x.o<45?'var(--blue)':'var(--w3)'}">O/U ${x.l}</div><div class="ou-lbl">Over ${x.o}% · Under ${100-x.o}%</div></div>`).join('')}</div></div></div></div>
 
-    <div class="sec"><button class="sec-btn" onclick="tS(this)">🔬 4 Modelli indipendenti <span class="sec-arr">▼</span></button><div class="sec-body"><div class="sec-inner"><div class="mod-grid">
-      <div class="mod"><div class="mod-name">Elo 35%</div><div class="mod-val" style="color:${R.m1>55?'var(--teal)':R.m1<45?'var(--blue)':'var(--w3)'}">${fm(R.m1,1)}%</div></div>
-      <div class="mod"><div class="mod-name">Log5 22%</div><div class="mod-val" style="color:${R.m2>55?'var(--teal)':R.m2<45?'var(--blue)':'var(--w3)'}">${fm(R.m2,1)}%</div></div>
-      <div class="mod"><div class="mod-name">Efficiency 28%</div><div class="mod-val" style="color:${R.m3>55?'var(--teal)':R.m3<45?'var(--blue)':'var(--w3)'}">${fm(R.m3,1)}%</div></div>
-      <div class="mod"><div class="mod-name">Forma 15%</div><div class="mod-val" style="color:${R.m4>55?'var(--teal)':R.m4<45?'var(--blue)':'var(--w3)'}">${fm(R.m4,1)}%</div></div>
-    </div><div style="text-align:center;font-size:.75rem;color:var(--w4);margin-top:8px">Concordanza: ${R.conc}/4 · Confidenza: ${R.conf}% (${R.confL})</div></div></div></div>
+    <div class="sec"><button class="sec-btn" onclick="tS(this)">🔬 5 Modelli indipendenti <span class="sec-arr">▼</span></button><div class="sec-body"><div class="sec-inner"><div class="mod-grid">
+      <div class="mod"><div class="mod-name">Elo 28%</div><div class="mod-val" style="color:${R.m1>55?'var(--teal)':R.m1<45?'var(--blue)':'var(--w3)'}">${fm(R.m1,1)}%</div></div>
+      <div class="mod"><div class="mod-name">Log5 18%</div><div class="mod-val" style="color:${R.m2>55?'var(--teal)':R.m2<45?'var(--blue)':'var(--w3)'}">${fm(R.m2,1)}%</div></div>
+      <div class="mod"><div class="mod-name">Efficiency 22%</div><div class="mod-val" style="color:${R.m3>55?'var(--teal)':R.m3<45?'var(--blue)':'var(--w3)'}">${fm(R.m3,1)}%</div></div>
+      <div class="mod"><div class="mod-name">Forma 12%</div><div class="mod-val" style="color:${R.m4>55?'var(--teal)':R.m4<45?'var(--blue)':'var(--w3)'}">${fm(R.m4,1)}%</div></div>
+      <div class="mod"><div class="mod-name">Pyth 20%</div><div class="mod-val" style="color:${R.m5>55?'var(--teal)':R.m5<45?'var(--blue)':'var(--w3)'}">${fm(R.m5,1)}%</div></div>
+    </div><div style="text-align:center;font-size:.75rem;color:var(--w4);margin-top:8px">Concordanza: ${R.conc}/5 · Confidenza: ${R.conf}% (${R.confL})</div></div></div></div>
 
     <div class="sec"><button class="sec-btn" onclick="tS(this)">📊 Statistiche <span class="sec-arr">▼</span></button><div class="sec-body"><div class="sec-inner"><div style="display:flex;justify-content:space-between;font-size:.7rem;font-weight:800;padding:0 8px;margin-bottom:4px"><span style="color:var(--teal)">${sn(hn)}</span><span style="color:var(--blue)">${sn(an)}</span></div>${stH}</div></div></div>
 
@@ -750,8 +792,10 @@ function renderA(g,R,el,aiId,cons,reg,oLab,vals){
       <div class="guide-panel" style="padding:0;border:none;background:transparent">
         <div class="guide-step"><div class="guide-step-title" style="color:var(--teal)">1 · 🏆 CONSENSUS ENGINE</div><div class="guide-step-desc">Fonde Modello AI, Bookmakers, Regressione e Smart Money. Se dice <b>MASSIMA</b> con accordo ≥80% → pick molto solido. Se <b>BASSA</b> → evita.</div></div>
         <div class="guide-step"><div class="guide-step-title" style="color:var(--violet)">2 · 📊 REGRESSION SCORE</div><div class="guide-step-desc">Punteggio 0-100 con grado A+→D. Elo, Net Rating, Quote, Forma, Difesa, Smart Money. <b>A/A+</b> = forte. <b>C/D</b> = evita in multipla.</div></div>
-        <div class="guide-step"><div class="guide-step-title" style="color:var(--green)">3 · 📈 OVER/UNDER</div><div class="guide-step-desc">Ora usa <b>Gaussian CDF</b> reale con deviazione standard. Linea a .5. Molto più preciso. Guarda σ: bassa = prevedibile, alta = volatile.</div></div>
-        <div class="guide-step"><div class="guide-step-title" style="color:var(--gold)">4 · 💰 VALUE BET + KELLY</div><div class="guide-step-desc">Se l'edge è positivo (verde) → value bet. Il <b>Kelly%</b> indica quanto del bankroll puntare. Guarda quale bookmaker offre la quota migliore.</div></div>
+        <div class="guide-step"><div class="guide-step-title" style="color:var(--green)">3 · 📈 OVER/UNDER</div><div class="guide-step-desc"><b>Gaussian CDF</b> + Over Rate storico (% partite che vanno Over per ogni squadra) + H2H totali + Pace Matchup. σ bassa = prevedibile, alta = volatile. Linea a .5 per precisione.</div></div>
+        <div class="guide-step"><div class="guide-step-title" style="color:var(--gold)">4 · 💰 VALUE BET + KELLY</div><div class="guide-step-desc">Edge positivo (verde) = value bet. Il <b>Kelly%</b> indica il bankroll da puntare. Mostra il bookmaker con la quota migliore.</div></div>
+        <div class="guide-step"><div class="guide-step-title" style="color:var(--blue)">5 · 🔬 5 MODELLI</div><div class="guide-step-desc"><b>Elo</b> (28%), <b>Log5</b> (18%), <b>Net Rating</b> (22%), <b>Forma+Riposo</b> (12%), <b>Pythagorean</b> (20%). Il Pyth è il win% atteso dai punti fatti/subiti (esponente Morey 13.91). 4-5 modelli concordi = alta affidabilità.</div></div>
+        <div class="guide-step"><div class="guide-step-title" style="color:var(--red)">6 · ⚠️ SEGNALI DI ATTENZIONE</div><div class="guide-step-desc">Riposo &lt;2g = fatica. Clutch negativo = perde le partite strette. Over Rate alto di entrambe = punta Over. Confidence interval ampio = partita volatile.</div></div>
         <div class="guide-step"><div class="guide-step-title" style="color:var(--w2)">🏅 REGOLA D'ORO</div><div class="guide-step-desc" style="background:var(--green-bg);border:1px solid var(--green-br);padding:10px;border-radius:8px;margin-top:6px">Gioca solo quando: <b>Consensus = MASSIMA o ALTA</b> + <b>Regression = A o A+</b>. Per multiple, solo partite che soddisfano entrambe.</div></div>
       </div>
     </div></div></div>
