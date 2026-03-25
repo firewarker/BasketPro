@@ -26,7 +26,7 @@
   --radius: 14px;
   --radius-sm: 8px;
   --radius-xs: 5px;
-  --font: 'DM Sans', -apple-system, sans-serif;
+  --font: 'Plus Jakarta Sans', -apple-system, sans-serif;
   --mono: 'JetBrains Mono', monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -249,3 +249,28 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* === ANIMATIONS === */
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .fade-in{animation:fadeIn .3s ease}
+
+/* === LIVE SCORES === */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes livePulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,0.4)}70%{box-shadow:0 0 0 6px rgba(248,113,113,0)}}
+.live-dot{display:inline-block;width:7px;height:7px;background:var(--red);border-radius:50%;margin-right:5px;animation:pulse 1.2s ease-in-out infinite}
+.match-time.live{color:var(--red);font-weight:700;font-size:.68rem;display:flex;align-items:center}
+.match-scores.live-scores{color:var(--text-w);font-weight:800;font-size:.95rem;animation:livePulse 2s ease infinite}
+.live-quarters{font-family:var(--mono);font-size:.55rem;color:var(--text-d);display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+
+/* === TIER BADGE (match list) === */
+.match-tier{font-family:var(--mono);font-size:.6rem;font-weight:800;text-align:center;margin-bottom:2px}
+
+/* === REGRESSION SCORE CARD === */
+.regression-bar{height:6px;background:var(--bg-surface);border-radius:3px;overflow:hidden;margin:6px 0}
+.regression-fill{height:100%;border-radius:3px;transition:width .6s ease}
+
+/* === VALUE CHIP enhancement === */
+.odds-chip.value{animation:fadeIn .4s ease}
+
+/* === DESKTOP SIDEBAR (1200px+) === */
+@media(min-width:1200px){
+  #app{max-width:1100px;display:grid;grid-template-columns:280px 1fr;gap:0}
+  .header{grid-column:1/-1}
+  .bottom-nav{display:none}
+}

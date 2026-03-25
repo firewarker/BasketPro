@@ -188,19 +188,48 @@ function analyzeTeam(games,teamId){
   const exp=13.91;
   const pythWP=Math.pow(tP,exp)/(Math.pow(tP,exp)+Math.pow(tO,exp));
 
+  // REST DAYS — giorni dall'ultima partita
+  let restDays=2; // default
+  if(fin[0]){
+    const lastGame=new Date(fin[0].date);
+    const today=new Date();
+    restDays=Math.max(0,Math.round((today-lastGame)/(1000*60*60*24)));
+  }
+  const isBackToBack=restDays<=1;
+
+  // TRAP DETECTOR — squadra forte (wp>.55) che perde in trasferta contro squadre deboli
+  // Segnale: alta varianza nelle ultime partite, perdite recenti come favorita in trasferta
+  let trapScore=0;
+  if(w/N>.55){
+    // Conta sconfitte trasferta nelle ultime 8
+    const recentAway=fin.slice(0,8).filter(g=>g.teams.away.id===teamId);
+    const awayLosses=recentAway.filter(g=>{
+      const my=g.scores.away.total,op=g.scores.home.total;return my<op;
+    });
+    if(recentAway.length>=3&&awayLosses.length/recentAway.length>=.4)trapScore=2; // Trappola forte
+    else if(recentAway.length>=2&&awayLosses.length>=2)trapScore=1; // Trappola lieve
+  }
+  // Alta varianza = imprevedibilità
+  if(std>12)trapScore=Math.min(3,trapScore+1);
+
+  // Close games ratio (partite decise da ≤5 punti = clutch indicator)
+  const closeGames=margins.filter(m=>Math.abs(m)<=5).length;
+  const clutchRatio=N>0?closeGames/N:0;
+
   return{ppg,opg,wPpg:wP/wS,wOpg:wO/wS,wp:w/N,hWP:hG?hW/hG:w/N,aWP:aG?aW/aG:w/N,
     net:ppg-opg,avgT,totStd,trend:(l5ppg-ppg)/Math.max(ppg,1),std,form,streak,N,w,
-    pythWP,overRate,l5ppg,margins};
+    pythWP,overRate,l5ppg,margins,
+    restDays,isBackToBack,trapScore,clutchRatio};
 }
 
 function headToHead(tid,opp){
   const all=Object.values(S.gamesCache).flat();
   const m=all.filter(g=>['FT','AOT'].includes(g.status?.short)&&
     ((g.teams.home.id===tid&&g.teams.away.id===opp)||(g.teams.home.id===opp&&g.teams.away.id===tid)));
-  let w=0,pts=0;
+  let w=0,myPts=0,totalPts=0;
   m.forEach(g=>{const h=g.teams.home.id===tid;const my=h?g.scores.home.total:g.scores.away.total;
-    const op=h?g.scores.away.total:g.scores.home.total;if(my>op)w++;pts+=my});
-  return{w,n:m.length,avgPts:m.length?pts/m.length:0};
+    const op=h?g.scores.away.total:g.scores.home.total;if(my>op)w++;myPts+=my;totalPts+=(my+op)});
+  return{w,n:m.length,avgPts:m.length?totalPts/m.length:0,avgMyPts:m.length?myPts/m.length:0};
 }
 
 function buildElo(games){
@@ -281,7 +310,35 @@ function predict(hD,aD,game,brefData){
   // Normalize
   const tot=cH+cA;cH/=tot;cA/=tot;
 
-  
+  // === BACK-TO-BACK PENALTY ===
+  // Squadra in B2B perde ~2-4% di win probability (studio NBA)
+  if(hD.isBackToBack&&!aD.isBackToBack){cH-=.03;cA+=.03}
+  else if(aD.isBackToBack&&!hD.isBackToBack){cA-=.03;cH+=.03}
+  // Entrambe B2B = nessun aggiustamento
+
+  // === TRAP DETECTOR ADJUSTMENT ===
+  // Squadra favorita con trapScore alto → riduci confidenza
+  if(cH>cA&&aD.trapScore>=2){cH-=.015*aD.trapScore;cA+=.015*aD.trapScore} // ospite trappola: meno sicuri del favorito casa
+  if(cA>cH&&hD.trapScore>=2){cA-=.015*hD.trapScore;cH+=.015*hD.trapScore}
+
+  // === CLUTCH ADJUSTMENT ===
+  // Squadra con alto clutch ratio (>35% partite decise da ≤5 pts) in partite equilibrate
+  if(Math.abs(cH-cA)<.08){
+    const hClutchBonus=hD.clutchRatio>.35?(hD.wp-.5)*.04:0;
+    const aClutchBonus=aD.clutchRatio>.35?(aD.wp-.5)*.04:0;
+    cH+=hClutchBonus;cA+=aClutchBonus;
+  }
+
+  // Re-normalize after adjustments
+  const tot2=cH+cA;cH=clamp(.12,cH/tot2,.88);cA=clamp(.12,cA/tot2,.88);
+
+  // Flags for display
+  const flags=[];
+  if(hD.isBackToBack)flags.push({team:'home',type:'b2b',label:`${game.teams.home.name} in Back-to-Back`});
+  if(aD.isBackToBack)flags.push({team:'away',type:'b2b',label:`${game.teams.away.name} in Back-to-Back`});
+  if(hD.trapScore>=2)flags.push({team:'home',type:'trap',label:`⚠️ Trap: ${game.teams.home.name} (score ${hD.trapScore})`});
+  if(aD.trapScore>=2)flags.push({team:'away',type:'trap',label:`⚠️ Trap: ${game.teams.away.name} (score ${aD.trapScore})`});
+
   // === PREDICTED SCORE ===
   // Punteggio più accurato basato su pace e rating
   const baseH=(results[0].hPts||hD.ppg)*(1+hD.trend*.15);
@@ -345,8 +402,90 @@ function predict(hD,aD,game,brefData){
     confidence:Math.abs(cH-cA)>.15?'high':Math.abs(cH-cA)>.08?'medium':'low',
     winner:cH>=cA?'home':'away',
     winnerProb:Math.max(cH,cA),
-    spread:Math.round((cH-cA)*15*10)/10, // approx point spread
+    spread:Math.round((cH-cA)*15*10)/10,
+    flags,
+    hB2B:hD.isBackToBack,aB2B:aD.isBackToBack,
+    hTrap:hD.trapScore,aTrap:aD.trapScore,
+    hClutch:hD.clutchRatio,aClutch:aD.clutchRatio,
+    hRest:hD.restDays,aRest:aD.restDays,
   };
+}
+
+// ═══ REGRESSION SCORE — Punteggio multi-fattore 0-100 con tier ═══
+// Adattato da BettingPro per basket: 6 fattori pesati → Gold/Silver/Bronze/Skip
+function calcRegressionScore(pred,hD,aD,game,odds){
+  const cl=(lo,v,hi)=>Math.max(lo,Math.min(hi,v));
+  const factors=[];let totS=0,totW=0;
+
+  // 1. PROBABILITÀ MODELLO (20%) — quanto è convinto il consensus
+  // Nel basket 55-75% è il range realistico
+  {const w=20;const favP=pred.winnerProb*100;
+  const s=cl(0,(favP-45)/30*100,100); // 45%=0, 75%=100
+  factors.push({n:'🎯 Prob Modello',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
+  totS+=s*w;totW+=w}
+
+  // 2. CONCORDANZA MODELLI (20%) — quanti dei 6 modelli concordano
+  {const w=20;const favDir=pred.winner;
+  const agree=pred.models.filter(m=>m[favDir]>.52).length;
+  const s=cl(0,agree/6*100,100); // 6/6=100, 4/6=67, 3/6=50
+  factors.push({n:'🤝 Concordanza',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
+  totS+=s*w;totW+=w}
+
+  // 3. CONFERMA QUOTE (15%) — le quote dei bookmaker confermano?
+  {const w=15;let s=50;
+  if(odds){
+    const bk=odds.bookmakers?.[0];
+    const h2hMkt=bk?.markets?.find(m=>m.key==='h2h');
+    if(h2hMkt){
+      const favName=pred.winner==='home'?odds.home_team:odds.away_team;
+      const favOdds=h2hMkt.outcomes?.find(o=>o.name===favName)?.price;
+      if(favOdds){
+        const impliedProb=1/favOdds;
+        // Se quote confermano (implied > 50%) → bonus
+        s=cl(0,(impliedProb-0.30)/0.40*100,100); // 30%=0, 70%=100
+      }
+    }
+  }
+  factors.push({n:'💰 Conferma Quote',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
+  totS+=s*w;totW+=w}
+
+  // 4. NET RATING DIFF (15%) — nel basket una diff di 5+ è molto significativa
+  {const w=15;const diff=Math.abs(hD.net-aD.net);
+  const s=cl(0,diff/10*100,100); // 0 pts=0, 10+ pts=100
+  factors.push({n:'📊 Net Rating',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
+  totS+=s*w;totW+=w}
+
+  // 5. FORMA RECENTE (15%) — win% ultime 6 partite del favorito
+  {const w=15;const favD=pred.winner==='home'?hD:aD;
+  const favFormW=favD.form.filter(f=>f==='W').length/Math.max(favD.form.length,1);
+  const s=cl(0,(favFormW-0.2)/0.6*100,100); // 20%W=0, 80%W=100
+  factors.push({n:'🔥 Forma',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
+  totS+=s*w;totW+=w}
+
+  // 6. ELO GAP (15%) — distanza Elo tra le squadre
+  {const w=15;const gap=Math.abs(pred.hElo-pred.aElo);
+  const s=cl(0,gap/250*100,100); // 0=0, 250+=100
+  factors.push({n:'⚡ Elo Gap',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
+  totS+=s*w;totW+=w}
+
+  const final=totW>0?totS/totW:50;
+  let tier,tierLabel,tierColor,tierIcon;
+  if(final>=65){tier='gold';tierLabel='ORO';tierColor='#fbbf24';tierIcon='🥇'}
+  else if(final>=48){tier='silver';tierLabel='ARGENTO';tierColor='#94a3b8';tierIcon='🥈'}
+  else if(final>=32){tier='bronze';tierLabel='BRONZO';tierColor='#cd7f32';tierIcon='🥉'}
+  else{tier='skip';tierLabel='SKIP';tierColor='#ef4444';tierIcon='⛔'}
+
+  let grade,gc;
+  if(final>=78){grade='A+';gc='var(--green)'}
+  else if(final>=65){grade='A';gc='var(--green)'}
+  else if(final>=55){grade='B+';gc='var(--blue)'}
+  else if(final>=45){grade='B';gc='var(--gold)'}
+  else if(final>=35){grade='C';gc='var(--red)'}
+  else{grade='D';gc='var(--red)'}
+
+  const rec=final>=65?'GIOCA':final>=45?'POSSIBILE':'EVITA';
+  return{score:Math.round(final),grade,gc,rec,factors,tier,tierLabel,tierColor,tierIcon,
+    favName:pred.winner==='home'?game.teams.home.name:game.teams.away.name};
 }
 
 // ═══ VALUE BET (Kelly Criterion) ═══
@@ -518,6 +657,9 @@ async function analyzeMatch(game){
     if(odds)game._odds=odds;
     game._value=calcValue(pred,odds);
 
+    // Regression Score (Gold/Silver/Bronze)
+    game._regression=calcRegressionScore(pred,hD,aD,game,odds);
+
     // Load AI analysis (non-blocking)
     askAI(game,pred,hD,aD).then(text=>{
       game._ai=text||'⚠️ Analisi AI non disponibile al momento (errore Groq API).';
@@ -592,6 +734,11 @@ async function loadMatches(){
         if(hD&&aD){
           game._hD=hD;game._aD=aD;
           game._pred=predict(hD,aD,game,S.bref);
+          // Quick regression score
+          const hKey=(game.teams.home.name+'_'+game.teams.away.name).toLowerCase().replace(/\s+/g,'');
+          const odds=S.odds[hKey]||null;
+          if(odds)game._odds=odds;
+          game._regression=calcRegressionScore(game._pred,hD,aD,game,odds);
         }
       }catch(e){console.warn('predict error',game.id,e.message);}
     });
@@ -611,9 +758,22 @@ async function loadMatches(){
   calculatePicks();
   S.loading=false;
   render();
+  startLiveTimer();
 }
 
-// ═══ RENDER ENGINE ═══
+// ═══ RENDER HELPERS ═══
+function renderQuarterScores(g){
+  if(!g.scores)return'';
+  const qs=[];
+  const quarters=['quarter_1','quarter_2','quarter_3','quarter_4','over_time'];
+  const labels=['Q1','Q2','Q3','Q4','OT'];
+  quarters.forEach((q,i)=>{
+    const h=g.scores?.home?.[q];const a=g.scores?.away?.[q];
+    if(h!=null&&a!=null)qs.push(`<span>${labels[i]}:${h}-${a}</span>`);
+  });
+  return qs.length?qs.join(' '):'';
+}
+
 function render(){
   const app=document.getElementById('app');
   if(!app)return;
@@ -741,7 +901,7 @@ function renderMatches(){
 
   h+='<div class="section-title">Tutte le partite</div>';
   S.matches.forEach(g=>{
-    const isLive=['1H','2H','HT','QT1','QT2','QT3','QT4'].includes(g.status?.short);
+    const isLive=LIVE_STATUSES.includes(g.status?.short);
     const isFT=['FT','AOT'].includes(g.status?.short);
     const p=g._pred;
     
@@ -761,6 +921,7 @@ function renderMatches(){
         else ouIcon=(predOU===actOU)?' <span style="font-size:12px;margin-left:4px">✅</span>':' <span style="font-size:12px;margin-left:4px">❌</span>';
       }
       quickH=`<div class="match-quick">
+        ${g._regression?`<div class="match-tier" style="color:${g._regression.tierColor}">${g._regression.tierIcon}${g._regression.score}</div>`:''}
         <div class="match-pick ${winner}">${winName} ${pct(p.winnerProb*100)}${winIcon}</div>
         <div class="match-pick ${p.pOver>=55?'over':'under'}">${p.pOver>=55?'O':'U'} ${fm(p.line,0)}${ouIcon}</div>
       </div>`;
@@ -768,12 +929,13 @@ function renderMatches(){
 
 
     h+=`<div class="match-item" data-match="${g.id}">
-      <div class="match-time${isLive?' live':''}">${isLive?'LIVE':isFT?'FT':formatTime(g.date)}</div>
+      <div class="match-time${isLive?' live':''}">${isLive?`<span class="live-dot"></span>${getQuarterLabel(g.status?.short)}`:isFT?'FT':formatTime(g.date)}</div>
       <div class="match-teams">
         <div class="match-team home">${g.teams.home.name}</div>
         <div class="match-team">${g.teams.away.name}</div>
       </div>
-      ${isFT||isLive?`<div class="match-scores"><span>${g.scores.home.total??'—'}</span><span>${g.scores.away.total??'—'}</span></div>`:''}
+      ${isFT||isLive?`<div class="match-scores${isLive?' live-scores':''}"><span>${g.scores?.home?.total??'—'}</span><span>${g.scores?.away?.total??'—'}</span></div>`:``}
+      ${isLive?`<div class="live-quarters">${renderQuarterScores(g)}</div>`:``}
       ${quickH}
     </div>`;
   });
@@ -849,6 +1011,15 @@ function renderAnalysis(){
     </div>
   </div></div>`;
 
+  // === FLAG ALERTS (B2B, Trap) ===
+  if(p.flags&&p.flags.length){
+    p.flags.forEach(f=>{
+      const color=f.type==='b2b'?'var(--gold)':'var(--red)';
+      const icon=f.type==='b2b'?'⏰':'🪤';
+      h+=`<div style="margin:0 16px 6px;padding:10px 14px;background:${color}10;border:1px solid ${color}25;border-radius:var(--radius-sm);font-size:.75rem;color:${color};font-weight:500">${icon} ${f.label}</div>`;
+    });
+  }
+
   // === MODEL DETAILS ===
   h+='<div class="panel fade-in"><div class="panel-header" data-toggle="models"><div class="panel-title">📊 Dettaglio 6 modelli</div><div class="panel-chevron">▼</div></div>';
   h+='<div class="panel-body"><div class="model-row">';
@@ -895,6 +1066,9 @@ function renderAnalysis(){
     <tr><td>L5 PPG</td><td class="val">${fm(hD.l5ppg)}</td><td class="val">${fm(aD.l5ppg)}</td></tr>
     <tr><td>Trend</td><td class="val ${hD.trend>0?'good':'bad'}">${hD.trend>0?'+':''}${fm(hD.trend*100)}%</td><td class="val ${aD.trend>0?'good':'bad'}">${aD.trend>0?'+':''}${fm(aD.trend*100)}%</td></tr>
     <tr><td>Streak</td><td class="val ${hD.streak>0?'good':'bad'}">${hD.streak>0?'+'+hD.streak:hD.streak}</td><td class="val ${aD.streak>0?'good':'bad'}">${aD.streak>0?'+'+aD.streak:aD.streak}</td></tr>
+    <tr><td>Riposo</td><td class="val ${hD.isBackToBack?'bad':'good'}">${hD.restDays}g${hD.isBackToBack?' B2B':''}</td><td class="val ${aD.isBackToBack?'bad':'good'}">${aD.restDays}g${aD.isBackToBack?' B2B':''}</td></tr>
+    <tr><td>Trap Score</td><td class="val ${hD.trapScore>=2?'bad':''}">${hD.trapScore}/3</td><td class="val ${aD.trapScore>=2?'bad':''}">${aD.trapScore}/3</td></tr>
+    <tr><td>Clutch (≤5pts)</td><td class="val">${pct(hD.clutchRatio*100)}</td><td class="val">${pct(aD.clutchRatio*100)}</td></tr>
     <tr><td>Partite</td><td class="val">${hD.N}</td><td class="val">${aD.N}</td></tr>
   </table>
   <div style="display:flex;justify-content:space-between;margin-top:10px">
@@ -933,6 +1107,35 @@ function renderAnalysis(){
         </div>`;
       });
     }
+    h+='</div></div>';
+  }
+
+  // === REGRESSION SCORE ===
+  if(g._regression){
+    const R=g._regression;
+    h+=`<div class="panel fade-in" style="border-color:${R.tierColor}40"><div class="panel-header" data-toggle="regression"><div class="panel-title">${R.tierIcon} Regression Score — ${R.tierLabel} (${R.score}/100)</div><div class="panel-chevron open">▼</div></div>`;
+    h+='<div class="panel-body open">';
+    // Score bar
+    h+=`<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <div style="flex:1;height:8px;background:var(--bg-surface);border-radius:4px;overflow:hidden">
+        <div style="width:${R.score}%;height:100%;border-radius:4px;background:${R.tierColor};transition:width .6s"></div>
+      </div>
+      <div style="font-family:var(--mono);font-size:1.1rem;font-weight:800;color:${R.gc}">${R.grade}</div>
+    </div>`;
+    // Recommendation
+    h+=`<div style="text-align:center;padding:8px;background:${R.tierColor}15;border:1px solid ${R.tierColor}30;border-radius:var(--radius-sm);margin-bottom:10px">
+      <div style="font-size:.85rem;font-weight:700;color:${R.tierColor}">${R.rec}: ${R.favName}</div>
+    </div>`;
+    // Factor bars
+    R.factors.forEach(f=>{
+      h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <div style="width:110px;font-size:.68rem;color:var(--text-g)">${f.n}</div>
+        <div style="flex:1;height:5px;background:var(--bg-surface);border-radius:3px;overflow:hidden">
+          <div style="width:${f.s}%;height:100%;background:${f.c};border-radius:3px"></div>
+        </div>
+        <div style="width:30px;text-align:right;font-family:var(--mono);font-size:.68rem;font-weight:600;color:${f.c}">${f.s}</div>
+      </div>`;
+    });
     h+='</div></div>';
   }
 
@@ -1040,6 +1243,53 @@ async function loadHome(){
   S.loading=false;
   render();
 }
+
+// ═══ LIVE SCORE REFRESH ═══
+let liveTimer=null;
+const LIVE_STATUSES=['Q1','Q2','Q3','Q4','OT','HT','BT','1H','2H','QT1','QT2','QT3','QT4'];
+
+function hasLiveGames(){
+  return S.matches.some(g=>LIVE_STATUSES.includes(g.status?.short));
+}
+
+function getQuarterLabel(st){
+  const map={'Q1':'1° Q','Q2':'2° Q','Q3':'3° Q','Q4':'4° Q','QT1':'1° Q','QT2':'2° Q','QT3':'3° Q','QT4':'4° Q',
+    'OT':'OT','HT':'Intervallo','BT':'Pausa','1H':'1° T','2H':'2° T'};
+  return map[st]||st;
+}
+
+async function refreshLiveScores(){
+  if(!S.league||S.view==='home')return;
+  const date=getDateStr(S.dateOffset);
+  try{
+    const d=await callWorker(`/api/basketball/games?league=${S.league.id}&date=${date}&timezone=Europe/Rome`);
+    const fresh=(d?.response||[]).filter(g=>g.teams?.home&&g.teams?.away);
+    if(!fresh.length)return;
+    let changed=false;
+    fresh.forEach(fg=>{
+      const existing=S.matches.find(m=>m.id===fg.id);
+      if(!existing)return;
+      if(existing.scores?.home?.total!==fg.scores?.home?.total||
+         existing.scores?.away?.total!==fg.scores?.away?.total||
+         existing.status?.short!==fg.status?.short){
+        existing.scores=fg.scores;
+        existing.status=fg.status;
+        existing.timer=fg.timer||fg.time;
+        changed=true;
+      }
+    });
+    if(changed){console.log('🔴 Live scores updated');render()}
+  }catch(e){console.warn('Live refresh error:',e.message)}
+}
+
+function startLiveTimer(){
+  if(liveTimer)clearInterval(liveTimer);
+  liveTimer=setInterval(()=>{
+    if(hasLiveGames()||S.matches.some(g=>g.status?.short==='NS'))refreshLiveScores();
+  },30000);
+}
+
+function stopLiveTimer(){if(liveTimer){clearInterval(liveTimer);liveTimer=null}}
 
 async function init(){
   console.log('🏀 BasketPro AI v6 — Starting...');
