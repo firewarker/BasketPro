@@ -109,12 +109,12 @@ async function callWorker(path){
 }
 
 async function loadGamesForLeague(leagueId,date){
-  const key=leagueId+"_"+date;
-  if(S.gamesCache[key])return S.gamesCache[key];
-  const d=await callWorker(`/api/basketball/games?league=${leagueId}&date=${date}&timezone=Europe/Rome`);
-  const games=(d?.response||[]).filter(g=>g.teams?.home&&g.teams?.away);
-  S.gamesCache[key]=games;
-  return games;
+  const key="ALL_GAMES_"+date;
+  if(!S.gamesCache[key]){
+    const d=await callWorker(`/api/basketball/games?date=${date}&timezone=Europe/Rome`);
+    S.gamesCache[key]=(d?.response||[]).filter(g=>g.teams?.home&&g.teams?.away);
+  }
+  return S.gamesCache[key].filter(g=>g.league?.id===leagueId);
 }
 
 async function loadTeamStats(teamId,leagueId,season){
@@ -601,8 +601,8 @@ async function loadMatches(){
   }
 
   // Se ancora vuoto (es. per errore), usa quello che c'è nel cache
-  if(!S.matches.length && S.gamesCache[S.league.id+'_'+getDateStr(S.dateOffset)]){
-    S.matches=S.gamesCache[S.league.id+'_'+getDateStr(S.dateOffset)]||[];
+  if(!S.matches.length && S.gamesCache["ALL_GAMES_"+getDateStr(S.dateOffset)]){
+    S.matches=S.gamesCache["ALL_GAMES_"+getDateStr(S.dateOffset)].filter(g=>g.league?.id===S.league.id)||[];
   }
   calculatePicks();
   S.loading=false;
