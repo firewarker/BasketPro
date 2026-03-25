@@ -7,16 +7,16 @@ const W = 'https://basketproai.lucalagan.workers.dev';
 const FB = 'https://basketpro-1a28b-default-rtdb.europe-west1.firebasedatabase.app';
 
 const LEAGUES = [
-  { id:12, name:'NBA',            country:'USA',     flag:'🇺🇸', season:'2025', top:true },
-  { id:13, name:'Euroleague',     country:'Europa',  flag:'🇪🇺', season:'2025', top:true },
-  { id:117,name:'Liga ACB',       country:'Spagna',  flag:'🇪🇸', season:'2025', top:true },
-  { id:120,name:'Serie A',        country:'Italia',  flag:'🇮🇹', season:'2025' },
-  { id:116,name:'NCAA',           country:'USA',     flag:'🇺🇸', season:'2025' },
-  { id:5,  name:'Pro A',          country:'Francia', flag:'🇫🇷', season:'2025' },
-  { id:4,  name:'BBL',            country:'Germania',flag:'🇩🇪', season:'2025' },
-  { id:2,  name:'Greek League',   country:'Grecia',  flag:'🇬🇷', season:'2025' },
-  { id:22, name:'BSL',            country:'Turchia', flag:'🇹🇷', season:'2025' },
-  { id:80, name:'CBA',            country:'Cina',    flag:'🇨🇳', season:'2025' },
+  { id:12, name:'NBA',            country:'USA',     flag:'🇺🇸', season:'2025-2026', top:true },
+  { id:13, name:'Euroleague',     country:'Europa',  flag:'🇪🇺', season:'2025-2026', top:true },
+  { id:117,name:'Liga ACB',       country:'Spagna',  flag:'🇪🇸', season:'2025-2026', top:true },
+  { id:120,name:'Serie A',        country:'Italia',  flag:'🇮🇹', season:'2025-2026' },
+  { id:116,name:'NCAA',           country:'USA',     flag:'🇺🇸', season:'2025-2026' },
+  { id:5,  name:'Pro A',          country:'Francia', flag:'🇫🇷', season:'2025-2026' },
+  { id:4,  name:'BBL',            country:'Germania',flag:'🇩🇪', season:'2025-2026' },
+  { id:2,  name:'Greek League',   country:'Grecia',  flag:'🇬🇷', season:'2025-2026' },
+  { id:22, name:'BSL',            country:'Turchia', flag:'🇹🇷', season:'2025-2026' },
+  { id:80, name:'CBA',            country:'Cina',    flag:'🇨🇳', season:'2025-2026' },
 ];
 
 // ═══ STATE ═══
@@ -266,12 +266,29 @@ function predict(hD,aD,game,brefData){
   // Normalize
   const tot=cH+cA;cH/=tot;cA/=tot;
 
+  
   // === PREDICTED SCORE ===
+  // Punteggio più accurato basato su pace e rating
   const baseH=(results[0].hPts||hD.ppg)*(1+hD.trend*.15);
   const baseA=(results[0].aPts||aD.ppg)*(1+aD.trend*.15);
-  const predH=Math.round(clamp(80,baseH,145));
-  const predA=Math.round(clamp(75,baseA,140));
+
+  const gamePace = (hD.avgT + aD.avgT) / 2;
+  const paceAdj = gamePace > 0 ? (gamePace / 200) : 1;
+  const hOff = hD.ppg;
+  const aOff = aD.ppg;
+  const hDef = hD.opg;
+  const aDef = aD.opg;
+
+  let fH = Math.round((hOff * 0.5 + aDef * 0.5) * paceAdj + HCA/2);
+  let fA = Math.round((aOff * 0.5 + hDef * 0.5) * paceAdj - HCA/2);
+
+  fH = Math.round(clamp(80, fH*(1+hD.trend*.15), 145));
+  fA = Math.round(clamp(75, fA*(1+aD.trend*.15), 140));
+
+  const predH=fH;
+  const predA=fA;
   const predTotal=predH+predA;
+
 
   // === OVER/UNDER (Gaussian CDF Advanced) ===
   const rawLine=(hD.avgT+aD.avgT)/2;
