@@ -158,9 +158,12 @@ function analyzeTeam(games,teamId){
   const avgMar=margins.reduce((s,x)=>s+x,0)/N;
   const std=Math.sqrt(margins.reduce((s,x)=>s+(x-avgMar)**2,0)/N);
 
-  // Over rate
+  // Over rate and Totals Std
   const avgT=totals.reduce((s,x)=>s+x,0)/N;
-  const overRate=totals.filter(t=>t>210).length/N;
+  const totStd=Math.sqrt(totals.reduce((s,x)=>s+(x-avgT)**2,0)/N);
+
+  // Calculate specific over rate based on average (instead of arbitrary 210)
+  const overRate=totals.filter(t=>t>avgT).length/N;
 
   // Streak
   let streak=0;
@@ -171,7 +174,7 @@ function analyzeTeam(games,teamId){
   const pythWP=Math.pow(tP,exp)/(Math.pow(tP,exp)+Math.pow(tO,exp));
 
   return{ppg,opg,wPpg:wP/wS,wOpg:wO/wS,wp:w/N,hWP:hG?hW/hG:w/N,aWP:aG?aW/aG:w/N,
-    net:ppg-opg,avgT,trend:(l5ppg-ppg)/Math.max(ppg,1),std,form,streak,N,w,
+    net:ppg-opg,avgT,totStd,trend:(l5ppg-ppg)/Math.max(ppg,1),std,form,streak,N,w,
     pythWP,overRate,l5ppg,margins};
 }
 
@@ -270,20 +273,37 @@ function predict(hD,aD,game,brefData){
   const predA=Math.round(clamp(75,baseA,140));
   const predTotal=predH+predA;
 
-  // === OVER/UNDER (Gaussian CDF) ===
-  const avgT=(hD.avgT+aD.avgT)/2;
-  const pace=avgT; // combined pace proxy
-  const stdDev=Math.sqrt(hD.std**2+aD.std**2)*.65+8; // empirical SD for totals
-  const line=Math.round(avgT*10)/10;
-  const zOver=(predTotal-line)/Math.max(stdDev,5);
-  const pOver=clamp(10,normCDF(zOver)*100,90);
-  const pUnder=100-pOver;
+  // === OVER/UNDER (Gaussian CDF Advanced) ===
+  const rawLine=(hD.avgT+aD.avgT)/2;
+  const mL=Math.round(rawLine*2)/2; // arrotanda a .5
+
+  // Combined standard deviation for totals
+  const combinedTotStd=Math.sqrt((hD.totStd**2)+(aD.totStd**2))/Math.SQRT2;
+  const effectiveMean=(predTotal*0.6+rawLine*0.4); // Blend tra predetto e storico
+  const effectiveStd=Math.max(combinedTotStd, 8); // Floor a 8 punti per sicurezza
+
+  const zOU=(mL-effectiveMean)/effectiveStd;
+
+  // H2H Over Rate Adjustment (se ci sono scontri diretti)
+  const avgOverRate = (hD.overRate + aD.overRate) / 2;
+  let ouAdj = Math.round((avgOverRate - 0.5) * 10);
+  if(h2h.n >= 3) {
+      if(h2h.avgPts > mL + 8) ouAdj += 4;
+      else if(h2h.avgPts > mL + 3) ouAdj += 2;
+      else if(h2h.avgPts < mL - 8) ouAdj -= 4;
+      else if(h2h.avgPts < mL - 3) ouAdj -= 2;
+  }
+
+  const oPRaw = clamp(10, (1-normCDF(zOU))*100, 90);
+  const pOver = clamp(10, oPRaw + ouAdj, 90);
+  const pUnder = 100 - pOver;
+  const line = mL;
 
   // Over/Under confidence reason
   let ouReason='';
-  if(pOver>=65)ouReason=`Ritmo alto (avg ${fm(avgT,0)} pts), attesi ${predTotal}`;
-  else if(pUnder>=65)ouReason=`Difese solide, attesi solo ${predTotal} pts`;
-  else ouReason=`Linea equilibrata a ${fm(line,1)}, totale atteso ${predTotal}`;
+  if(pOver>=60)ouReason=`Trend da OVER (avg ${fm(rawLine,1)}), attesi ${fm(predTotal,1)} pts con std ${fm(effectiveStd,1)}`;
+  else if(pUnder>=60)ouReason=`Trend da UNDER (avg ${fm(rawLine,1)}), attesi ${fm(predTotal,1)} pts con std ${fm(effectiveStd,1)}`;
+  else ouReason=`Linea incerta a ${fm(line,1)}, totale atteso ${fm(predTotal,1)}`;
 
   return{
     models:results,home:cH,away:cA,
