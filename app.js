@@ -114,7 +114,7 @@ async function loadGamesForLeague(leagueId,date){
     const d=await callWorker(`/api/basketball/games?date=${date}&timezone=Europe/Rome`);
     S.gamesCache[key]=(d?.response||[]).filter(g=>g.teams?.home&&g.teams?.away);
   }
-  return S.gamesCache[key].filter(g=>g.league?.id===leagueId);
+  return S.gamesCache[key].filter(g=>g.league?.id==leagueId);
 }
 
 async function loadTeamStats(teamId,leagueId,season){
@@ -595,6 +595,9 @@ async function loadMatches(){
       }catch(e){console.warn('predict error',game.id,e.message);}
     });
 
+    // ← ASSEGNA I MATCH (era mancante! causa principale di nessuna partita mostrata)
+    S.matches=games;
+
   }catch(err){
     console.error('loadMatches error',err);
     S.matches=[];
@@ -602,7 +605,7 @@ async function loadMatches(){
 
   // Se ancora vuoto (es. per errore), usa quello che c'è nel cache
   if(!S.matches.length && S.gamesCache["ALL_GAMES_"+getDateStr(S.dateOffset)]){
-    S.matches=S.gamesCache["ALL_GAMES_"+getDateStr(S.dateOffset)].filter(g=>g.league?.id===S.league.id)||[];
+    S.matches=S.gamesCache["ALL_GAMES_"+getDateStr(S.dateOffset)].filter(g=>g.league?.id==S.league.id)||[];
   }
   calculatePicks();
   S.loading=false;
