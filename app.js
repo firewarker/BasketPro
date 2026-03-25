@@ -35,6 +35,7 @@ const LEAGUES = [
 
 // ═══ STATE ═══
 const S = {
+  dynamicLeagues:[],
   view:'home',        // home | matches | analysis
   league:null,
   matches:[],
@@ -646,15 +647,20 @@ function renderBody(){
 
 // === HOME ===
 function renderHome(){
-  let h='<div class="section-title">Campionati</div><div class="league-list">';
-  LEAGUES.forEach(l=>{
-    h+=`<div class="league-item" data-league="${l.id}">
-      <div class="league-flag">${l.flag}</div>
-      <div class="league-info"><div class="league-name">${l.name}</div><div class="league-country">${l.country}</div></div>
-      ${l.top?'<div class="league-badge">TOP</div>':''}
-      <div class="league-arrow">›</div>
-    </div>`;
-  });
+  const leagues=S.dynamicLeagues&&S.dynamicLeagues.length?S.dynamicLeagues:LEAGUES;
+  let h='<div class="section-title">Campionati ('+leagues.length+' con partite oggi)</div><div class="league-list">';
+  if(S.loading){
+    h+='<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="margin-top:12px;color:var(--text-d);font-size:.8rem">Caricamento campionati...</div></div>';
+  } else {
+    leagues.forEach(l=>{
+      h+=`<div class="league-item" data-league="${l.id}">
+        <div class="league-flag">${l.flag}</div>
+        <div class="league-info"><div class="league-name">${l.name}</div><div class="league-country">${l.country}${l.count?' · '+l.count+' partite':''}</div></div>
+        ${l.top?'<div class="league-badge">TOP</div>':''}
+        <div class="league-arrow">›</div>
+      </div>`;
+    });
+  }
   h+='</div>';
 
   // Show picks if any
@@ -954,7 +960,11 @@ function renderBottomNav(){
 // ═══ EVENTS ═══
 function attachEvents(){
   document.querySelectorAll('[data-league]').forEach(el=>{
-    el.onclick=()=>{S.league=LEAGUES.find(l=>l.id==el.dataset.league);loadMatches()};
+    el.onclick=()=>{
+    const allLgs=[...(S.dynamicLeagues.length?S.dynamicLeagues:[]),...LEAGUES];
+    S.league=allLgs.find(l=>l.id==el.dataset.league)||null;
+    if(S.league)loadMatches();
+  };
   });
   document.querySelectorAll('[data-match]').forEach(el=>{
     el.onclick=()=>{const g=S.matches.find(m=>m.id==el.dataset.match);if(g)analyzeMatch(g)};
@@ -966,7 +976,7 @@ function attachEvents(){
     };
   });
   document.querySelectorAll('[data-date]').forEach(el=>{
-    el.onclick=()=>{S.dateOffset=parseInt(el.dataset.date);if(S.league)loadMatches();else render()};
+    el.onclick=()=>{S.dateOffset=parseInt(el.dataset.date);if(S.league)loadMatches();else loadHome();};
   });
   document.querySelectorAll('[data-back]').forEach(el=>{
     el.onclick=()=>{S.view=el.dataset.back;render()};
@@ -984,19 +994,58 @@ function attachEvents(){
 }
 
 // ═══ INIT ═══
-async function init(){
-  console.log('🏀 BasketPro AI v6 — Starting...');
+// Carica TUTTE le partite del giorno e costruisce la lista campionati dinamicamente
+// Esattamente come faceva il vecchio BasketPro
+async function loadHome(){
+  S.loading=true;
   render();
 
-  // Pre-load NBA games for today for picks on home
-  const nbaLeague=LEAGUES.find(l=>l.id===12);
-  if(nbaLeague){
-    S.league=nbaLeague;
-    await loadMatches();
-    S.view='home';
-    S.league=null;
-    render();
+  const date=getDateStr(S.dateOffset);
+  const cacheKey='ALL_GAMES_'+date;
+
+  if(!S.gamesCache[cacheKey]||!S.gamesCache[cacheKey].length){
+    const d=await callWorker(`/api/basketball/games?date=${date}&timezone=Europe/Rome`);
+    const all=(d?.response||[]).filter(g=>g.teams?.home&&g.teams?.away);
+    if(all.length) S.gamesCache[cacheKey]=all;
   }
+
+  // Costruisce la lista campionati dai dati reali (come il vecchio BasketPro)
+  const all=S.gamesCache[cacheKey]||[];
+  const map=new Map();
+  all.forEach(g=>{
+    const id=g.league?.id;
+    if(!id)return;
+    if(!map.has(id)){
+      // Cerca nella lista LEAGUES per avere flag e info extra
+      const known=LEAGUES.find(l=>l.id==id);
+      map.set(id,{
+        id,
+        name: g.league.name,
+        country: g.country?.name||'Altro',
+        flag: known?.flag||'🏀',
+        top: known?.top||false,
+        season: g.league?.season||known?.season||'2025-2026',
+        count: 0
+      });
+    }
+    map.get(id).count++;
+  });
+
+  S.dynamicLeagues=[...map.values()].sort((a,b)=>{
+    if(a.top&&!b.top)return -1;
+    if(!a.top&&b.top)return 1;
+    return a.country.localeCompare(b.country)||a.name.localeCompare(b.name);
+  });
+
+  S.loading=false;
+  render();
+}
+
+async function init(){
+  console.log('🏀 BasketPro AI v6 — Starting...');
+  S.dynamicLeagues=[];
+  render();
+  await loadHome();
 }
 
 document.addEventListener('DOMContentLoaded',init);
