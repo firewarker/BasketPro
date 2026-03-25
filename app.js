@@ -6,31 +6,17 @@
 const W = 'https://basketproai.lucalagan.workers.dev';
 const FB = 'https://basketpro-1a28b-default-rtdb.europe-west1.firebasedatabase.app';
 
-// Lista espansa per trovare tutti i campionati principali e secondari
 const LEAGUES = [
-  { id:12, name:'NBA', country:'USA', flag:'🇺🇸', season:'2025-2026', top:true },
-  { id:13, name:'Euroleague', country:'Europa', flag:'🇪🇺', season:'2025-2026', top:true },
-  { id:117,name:'Liga ACB', country:'Spagna', flag:'🇪🇸', season:'2025-2026', top:true },
-  { id:120,name:'Serie A', country:'Italia', flag:'🇮🇹', season:'2025-2026', top:true },
-  { id:116,name:'NCAA', country:'USA', flag:'🇺🇸', season:'2025-2026' },
-  { id:142,name:'Lega A2', country:'Italia', flag:'🇮🇹', season:'2025-2026' },
-  { id:5,  name:'Pro A', country:'Francia', flag:'🇫🇷', season:'2025-2026' },
-  { id:4,  name:'BBL', country:'Germania', flag:'🇩🇪', season:'2025-2026' },
-  { id:2,  name:'Greek League', country:'Grecia', flag:'🇬🇷', season:'2025-2026' },
-  { id:22, name:'BSL', country:'Turchia', flag:'🇹🇷', season:'2025-2026' },
-  { id:80, name:'CBA', country:'Cina', flag:'🇨🇳', season:'2025-2026' },
-  { id:15, name:'Eurocup', country:'Europa', flag:'🇪🇺', season:'2025-2026' },
-  { id:18, name:'Champions League', country:'Europa', flag:'🇪🇺', season:'2025-2026' },
-  { id:19, name:'BNXT League', country:'Belgio/Olanda', flag:'🇧🇪', season:'2025-2026' },
-  { id:7,  name:'VTB United League', country:'Russia', flag:'🇷🇺', season:'2025-2026' },
-  { id:24, name:'KBL', country:'Corea del Sud', flag:'🇰🇷', season:'2025-2026' },
-  { id:21, name:'NBL', country:'Australia', flag:'🇦🇺', season:'2025-2026' },
-  { id:20, name:'B.League', country:'Giappone', flag:'🇯🇵', season:'2025-2026' },
-  { id:26, name:'Super League', country:'Israele', flag:'🇮🇱', season:'2025-2026' },
-  { id:119,name:'Liga Nacional', country:'Argentina', flag:'🇦🇷', season:'2025-2026' },
-  { id:118,name:'NBB', country:'Brasile', flag:'🇧🇷', season:'2025-2026' },
-  { id:23, name:'LKL', country:'Lituania', flag:'🇱🇹', season:'2025-2026' },
-  { id:6,  name:'PBL', country:'Polonia', flag:'🇵🇱', season:'2025-2026' },
+  { id:12, name:'NBA',            country:'USA',     flag:'🇺🇸', season:'2025-2026', top:true },
+  { id:13, name:'Euroleague',     country:'Europa',  flag:'🇪🇺', season:'2025-2026', top:true },
+  { id:117,name:'Liga ACB',       country:'Spagna',  flag:'🇪🇸', season:'2025-2026', top:true },
+  { id:120,name:'Serie A',        country:'Italia',  flag:'🇮🇹', season:'2025-2026' },
+  { id:116,name:'NCAA',           country:'USA',     flag:'🇺🇸', season:'2025-2026' },
+  { id:5,  name:'Pro A',          country:'Francia', flag:'🇫🇷', season:'2025-2026' },
+  { id:4,  name:'BBL',            country:'Germania',flag:'🇩🇪', season:'2025-2026' },
+  { id:2,  name:'Greek League',   country:'Grecia',  flag:'🇬🇷', season:'2025-2026' },
+  { id:22, name:'BSL',            country:'Turchia', flag:'🇹🇷', season:'2025-2026' },
+  { id:80, name:'CBA',            country:'Cina',    flag:'🇨🇳', season:'2025-2026' },
 ];
 
 // ═══ STATE ═══
@@ -68,8 +54,7 @@ function pct(v){return fm(v,0)+'%'}
 
 function getDateStr(off=0){
   const d=new Date();d.setDate(d.getDate()+off);
-  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${day}`;
+  return d.toISOString().split('T')[0];
 }
 function getDateLabel(off){
   if(off===0)return'Oggi';if(off===1)return'Domani';if(off===-1)return'Ieri';
@@ -81,25 +66,6 @@ function formatTime(dateStr){
 }
 
 // ═══ API LAYER ═══
-
-async function saveToFirebase(path, data) {
-  try {
-    await fetch(`${FB}/${path}.json`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-  } catch(e) { console.error('Firebase save error:', e); }
-}
-
-async function loadFromFirebase(path) {
-  try {
-    const r = await fetch(`${FB}/${path}.json`);
-    if(r.ok) return await r.json();
-  } catch(e) { console.error('Firebase load error:', e); }
-  return null;
-}
-
 async function callWorker(path){
   try{
     const r=await fetch(W+path,{signal:AbortSignal.timeout(12000)});
@@ -109,7 +75,7 @@ async function callWorker(path){
 }
 
 async function loadGamesForLeague(leagueId,date){
-  const key=leagueId+"_"+date;
+  const key=leagueId+'_'+date;
   if(S.gamesCache[key])return S.gamesCache[key];
   const d=await callWorker(`/api/basketball/games?league=${leagueId}&date=${date}&timezone=Europe/Rome`);
   const games=(d?.response||[]).filter(g=>g.teams?.home&&g.teams?.away);
@@ -172,12 +138,9 @@ function analyzeTeam(games,teamId){
   const avgMar=margins.reduce((s,x)=>s+x,0)/N;
   const std=Math.sqrt(margins.reduce((s,x)=>s+(x-avgMar)**2,0)/N);
 
-  // Over rate and Totals Std
+  // Over rate
   const avgT=totals.reduce((s,x)=>s+x,0)/N;
-  const totStd=Math.sqrt(totals.reduce((s,x)=>s+(x-avgT)**2,0)/N);
-
-  // Calculate specific over rate based on average (instead of arbitrary 210)
-  const overRate=totals.filter(t=>t>avgT).length/N;
+  const overRate=totals.filter(t=>t>210).length/N;
 
   // Streak
   let streak=0;
@@ -188,7 +151,7 @@ function analyzeTeam(games,teamId){
   const pythWP=Math.pow(tP,exp)/(Math.pow(tP,exp)+Math.pow(tO,exp));
 
   return{ppg,opg,wPpg:wP/wS,wOpg:wO/wS,wp:w/N,hWP:hG?hW/hG:w/N,aWP:aG?aW/aG:w/N,
-    net:ppg-opg,avgT,totStd,trend:(l5ppg-ppg)/Math.max(ppg,1),std,form,streak,N,w,
+    net:ppg-opg,avgT,trend:(l5ppg-ppg)/Math.max(ppg,1),std,form,streak,N,w,
     pythWP,overRate,l5ppg,margins};
 }
 
@@ -280,66 +243,32 @@ function predict(hD,aD,game,brefData){
   // Normalize
   const tot=cH+cA;cH/=tot;cA/=tot;
 
-  
   // === PREDICTED SCORE ===
-  // Punteggio più accurato basato su pace e rating
   const baseH=(results[0].hPts||hD.ppg)*(1+hD.trend*.15);
   const baseA=(results[0].aPts||aD.ppg)*(1+aD.trend*.15);
-
-  const gamePace = (hD.avgT + aD.avgT) / 2;
-  const paceAdj = gamePace > 0 ? (gamePace / 200) : 1;
-  const hOff = hD.ppg;
-  const aOff = aD.ppg;
-  const hDef = hD.opg;
-  const aDef = aD.opg;
-
-  let fH = Math.round((hOff * 0.5 + aDef * 0.5) * paceAdj + HCA/2);
-  let fA = Math.round((aOff * 0.5 + hDef * 0.5) * paceAdj - HCA/2);
-
-  fH = Math.round(clamp(80, fH*(1+hD.trend*.15), 145));
-  fA = Math.round(clamp(75, fA*(1+aD.trend*.15), 140));
-
-  const predH=fH;
-  const predA=fA;
+  const predH=Math.round(clamp(80,baseH,145));
+  const predA=Math.round(clamp(75,baseA,140));
   const predTotal=predH+predA;
 
-
-  // === OVER/UNDER (Gaussian CDF Advanced) ===
-  const rawLine=(hD.avgT+aD.avgT)/2;
-  const mL=Math.round(rawLine*2)/2; // arrotanda a .5
-
-  // Combined standard deviation for totals
-  const combinedTotStd=Math.sqrt((hD.totStd**2)+(aD.totStd**2))/Math.SQRT2;
-  const effectiveMean=(predTotal*0.6+rawLine*0.4); // Blend tra predetto e storico
-  const effectiveStd=Math.max(combinedTotStd, 8); // Floor a 8 punti per sicurezza
-
-  const zOU=(mL-effectiveMean)/effectiveStd;
-
-  // H2H Over Rate Adjustment (se ci sono scontri diretti)
-  const avgOverRate = (hD.overRate + aD.overRate) / 2;
-  let ouAdj = Math.round((avgOverRate - 0.5) * 10);
-  if(h2h.n >= 3) {
-      if(h2h.avgPts > mL + 8) ouAdj += 4;
-      else if(h2h.avgPts > mL + 3) ouAdj += 2;
-      else if(h2h.avgPts < mL - 8) ouAdj -= 4;
-      else if(h2h.avgPts < mL - 3) ouAdj -= 2;
-  }
-
-  const oPRaw = clamp(10, (1-normCDF(zOU))*100, 90);
-  const pOver = clamp(10, oPRaw + ouAdj, 90);
-  const pUnder = 100 - pOver;
-  const line = mL;
+  // === OVER/UNDER (Gaussian CDF) ===
+  const avgT=(hD.avgT+aD.avgT)/2;
+  const pace=avgT; // combined pace proxy
+  const stdDev=Math.sqrt(hD.std**2+aD.std**2)*.65+8; // empirical SD for totals
+  const line=Math.round(avgT*10)/10;
+  const zOver=(predTotal-line)/Math.max(stdDev,5);
+  const pOver=clamp(10,normCDF(zOver)*100,90);
+  const pUnder=100-pOver;
 
   // Over/Under confidence reason
   let ouReason='';
-  if(pOver>=60)ouReason=`Trend da OVER (avg ${fm(rawLine,1)}), attesi ${fm(predTotal,1)} pts con std ${fm(effectiveStd,1)}`;
-  else if(pUnder>=60)ouReason=`Trend da UNDER (avg ${fm(rawLine,1)}), attesi ${fm(predTotal,1)} pts con std ${fm(effectiveStd,1)}`;
-  else ouReason=`Linea incerta a ${fm(line,1)}, totale atteso ${fm(predTotal,1)}`;
+  if(pOver>=65)ouReason=`Ritmo alto (avg ${fm(avgT,0)} pts), attesi ${predTotal}`;
+  else if(pUnder>=65)ouReason=`Difese solide, attesi solo ${predTotal} pts`;
+  else ouReason=`Linea equilibrata a ${fm(line,1)}, totale atteso ${predTotal}`;
 
   return{
     models:results,home:cH,away:cA,
     predH,predA,predTotal,
-    line,pOver,pUnder,stdDev:effectiveStd,ouReason,
+    line,pOver,pUnder,stdDev,ouReason,
     hElo,aElo,h2h,
     confidence:Math.abs(cH-cA)>.15?'high':Math.abs(cH-cA)>.08?'medium':'low',
     winner:cH>=cA?'home':'away',
@@ -387,7 +316,7 @@ function calcValue(pred,odds){
 // ═══ AI ANALYSIS (Groq via Worker) ═══
 async function askAI(game,pred,hD,aD){
   const key=game.id;
-  if(S.aiCache[key])return S.aiCache[key];
+  if(S.aiCache[key]!==undefined)return S.aiCache[key];
 
   const hName=game.teams.home.name,aName=game.teams.away.name;
   const prompt=`Analizza questa partita di basket:
@@ -413,12 +342,13 @@ Rispondi in italiano con:
     });
     if(!r.ok)throw new Error('HTTP '+r.status);
     const d=await r.json();
-    const text=d.text||d.choices?.[0]?.message?.content||'';
-    S.aiCache[key]=text;
-    return text;
+    const text=(d.text||d.choices?.[0]?.message?.content||'').trim();
+    S.aiCache[key]=text || 'Analisi AI non disponibile per questa partita.';
+    return S.aiCache[key];
   }catch(e){
     console.warn('AI error:',e.message);
-    return null;
+    S.aiCache[key]='Analisi AI non disponibile per questa partita.';
+    return S.aiCache[key];
   }
 }
 
@@ -516,7 +446,14 @@ async function analyzeMatch(game){
   game._value=calcValue(pred,odds);
 
   // Load AI analysis (non-blocking)
-  askAI(game,pred,hD,aD).then(text=>{game._ai=text;render()});
+  game.ai='';
+  askAI(game,pred,hD,aD).then(aiText=>{
+    game.ai = aiText || 'Analisi AI non disponibile per questa partita.';
+    render();
+  }).catch(()=>{
+    game.ai = 'Analisi AI non disponibile per questa partita.';
+    render();
+  });
 
   S.loading=false;render();
 }
@@ -528,13 +465,6 @@ async function loadMatches(){
 
   const date=getDateStr(S.dateOffset);
   const games=await loadGamesForLeague(S.league.id,date);
-  // Carica i salvataggi da Firebase per preservare le previsioni originali
-  const fbPath = `predictions/${S.league.id}_${date}`;
-  const fbGames = await loadFromFirebase(fbPath) || [];
-  const fbGamesMap = {};
-  fbGames.forEach(g => fbGamesMap[g.id] = g);
-
-
 
   // Quick Elo + quick predictions for match list
   if(games.length){
@@ -560,12 +490,7 @@ async function loadMatches(){
     if(S.league.id===13)await loadOdds('basketball_euroleague');
 
     // Quick predict each match
-    let needsFbUpdate = false;
     games.forEach(game=>{
-      const cached = fbGamesMap[game.id];
-      if(cached && cached._pred){
-        game._pred = cached._pred;
-      } else {
       const hid=game.teams.home.id,aid=game.teams.away.id;
       const hGames=S.gamesCache['g_'+hid+'_'+S.league.season]||[];
       const aGames=S.gamesCache['g_'+aid+'_'+S.league.season]||[];
@@ -574,15 +499,8 @@ async function loadMatches(){
       if(hD&&aD){
         game._hD=hD;game._aD=aD;
         game._pred=predict(hD,aD,game,S.bref);
-        needsFbUpdate = true;
-      }
       }
     });
-
-    // Salva o aggiorna su Firebase
-    if(needsFbUpdate || games.some(g=>['FT','AOT'].includes(g.status?.short))) {
-      saveToFirebase(fbPath, games);
-    }
   }
 
   S.matches=games;
@@ -641,21 +559,6 @@ function renderHome(){
     h+='<div class="section-title">Picks del giorno</div><div class="picks-section">';
     S.picks.slice(0,8).forEach(pk=>{
       const conf=pk.confidence==='high'?'high':pk.confidence==='medium'?'medium':'low';
-          // Add checkmarks to picks
-          let pickIcon='';
-          if(pk.game.scores && ['FT','AOT'].includes(pk.game.status?.short)) {
-            const h=pk.game.scores.home.total, a=pk.game.scores.away.total;
-            if(pk.type==='winner'){
-               const actW = h>a ? pk.game.teams.home.name : pk.game.teams.away.name;
-               pickIcon = (pk.bet === actW) ? ' ✅' : ' ❌';
-            } else if(pk.type==='over' || pk.type==='under'){
-               const t = h+a;
-               const actOU = t>pk.line?'over':(t<pk.line?'under':'push');
-               pickIcon = (actOU==='push') ? ' ➖' : (pk.type===actOU ? ' ✅' : ' ❌');
-            }
-          }
-          const betText = `<div class="pick-bet${pk.type!=='winner'?' over':''}">${pk.bet}${pickIcon}</div>`;
-
       h+=`<div class="pick-card" data-pickgame="${pk.game.id}">
         <div class="pick-top"><div class="pick-match">${pk.matchName}</div><div class="pick-league">${pk.league} ${pk.time}</div></div>
         <div class="pick-bottom">
@@ -685,25 +588,10 @@ function renderMatches(){
     h+='<div class="section-title">Migliori picks</div><div class="picks-section">';
     S.picks.slice(0,3).forEach(pk=>{
       const conf=pk.confidence==='high'?'high':pk.confidence==='medium'?'medium':'low';
-          // Add checkmarks to picks
-          let pickIcon='';
-          if(pk.game.scores && ['FT','AOT'].includes(pk.game.status?.short)) {
-            const h=pk.game.scores.home.total, a=pk.game.scores.away.total;
-            if(pk.type==='winner'){
-               const actW = h>a ? pk.game.teams.home.name : pk.game.teams.away.name;
-               pickIcon = (pk.bet === actW) ? ' ✅' : ' ❌';
-            } else if(pk.type==='over' || pk.type==='under'){
-               const t = h+a;
-               const actOU = t>pk.line?'over':(t<pk.line?'under':'push');
-               pickIcon = (actOU==='push') ? ' ➖' : (pk.type===actOU ? ' ✅' : ' ❌');
-            }
-          }
-          const betText = `<div class="pick-bet${pk.type!=='winner'?' over':''}">${pk.bet}${pickIcon}</div>`;
-
       h+=`<div class="pick-card" data-match="${pk.game.id}">
         <div class="pick-top"><div class="pick-match">${pk.matchName}</div></div>
         <div class="pick-bottom">
-          ${betText}
+          <div class="pick-bet${pk.type!=='winner'?' over':''}">${pk.bet}</div>
           <div class="pick-confidence ${conf}">${pct(pk.prob*100)}</div>
           <div class="pick-reason">${pk.reason}</div>
         </div>
@@ -717,28 +605,15 @@ function renderMatches(){
     const isLive=['1H','2H','HT','QT1','QT2','QT3','QT4'].includes(g.status?.short);
     const isFT=['FT','AOT'].includes(g.status?.short);
     const p=g._pred;
-    
     let quickH='';
     if(p){
       const winner=p.winner==='home'?'home':'away';
       const winName=p.winner==='home'?g.teams.home.name.split(' ').pop():g.teams.away.name.split(' ').pop();
-      let winIcon=''; let ouIcon='';
-      if(isFT && g.scores.home.total != null && g.scores.away.total != null){
-        const hS=g.scores.home.total; const aS=g.scores.away.total; const aT=hS+aS;
-        const actW=hS>aS?'home':'away';
-        winIcon=(winner===actW)?' <span style="font-size:12px;margin-left:4px">✅</span>':' <span style="font-size:12px;margin-left:4px">❌</span>';
-
-        const predOU=p.pOver>=55?'over':'under';
-        let actOU=aT>p.line?'over':(aT<p.line?'under':'push');
-        if(actOU==='push') ouIcon=' ➖';
-        else ouIcon=(predOU===actOU)?' <span style="font-size:12px;margin-left:4px">✅</span>':' <span style="font-size:12px;margin-left:4px">❌</span>';
-      }
       quickH=`<div class="match-quick">
-        <div class="match-pick ${winner}">${winName} ${pct(p.winnerProb*100)}${winIcon}</div>
-        <div class="match-pick ${p.pOver>=55?'over':'under'}">${p.pOver>=55?'O':'U'} ${fm(p.line,0)}${ouIcon}</div>
+        <div class="match-pick ${winner}">${winName} ${pct(p.winnerProb*100)}</div>
+        <div class="match-pick ${p.pOver>=55?'over':'under'}">${p.pOver>=55?'O':'U'} ${fm(p.line,0)}</div>
       </div>`;
     }
-
 
     h+=`<div class="match-item" data-match="${g.id}">
       <div class="match-time${isLive?' live':''}">${isLive?'LIVE':isFT?'FT':formatTime(g.date)}</div>
