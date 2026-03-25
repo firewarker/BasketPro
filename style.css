@@ -109,7 +109,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 
 /* === PREDICTION CARDS === */
 .pred-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 16px;margin-bottom:12px}
-.pred-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center;position:relative;overflow:hidden}
+.pred-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center;position:relative;overflow:hidden;min-height:100px;display:flex;flex-direction:column;justify-content:center}
 .pred-card.highlight{border-color:var(--border-accent);box-shadow:var(--shadow-accent)}
 .pred-card.full{grid-column:1/-1}
 .pred-label{font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-d);margin-bottom:6px}
@@ -237,14 +237,35 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto}
 
-/* === RESPONSIVE GRID === */
+/* === RESPONSIVE === */
 @media(min-width:768px){
-  .pred-grid{grid-template-columns:repeat(4,1fr)}
-  .match-item{padding:14px 16px}
-}
-@media(min-width:1200px){
+  #app{max-width:720px;padding-bottom:40px}
+  .pred-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .match-item{padding:14px 18px}
+  .hero-team{font-size:1.3rem;max-width:220px}
+  .bottom-nav{display:none}
   .league-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .analysis-hero{padding:24px 20px}
+  .panel{margin:0 16px 10px}
+  .consensus{margin-bottom:18px}
 }
+@media(min-width:1100px){
+  #app{max-width:900px}
+  .hero-team{font-size:1.5rem;max-width:300px}
+  .pred-grid{gap:12px}
+  .panel,.consensus,.ai-card{margin-left:16px;margin-right:16px}
+  .match-team{font-size:.88rem}
+}
+
+/* === PREDICTION CARD TEXT FIX === */
+.pred-sub{font-size:0.68rem;color:var(--text-g);line-height:1.35;word-wrap:break-word;overflow-wrap:break-word}
+.score-pred{gap:8px;padding:10px 8px}
+.score-num{font-size:1.5rem}
+
+/* === MATCH NAME OVERFLOW FIX === */
+.match-team{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+@media(min-width:768px){.match-team{max-width:280px}}
+@media(min-width:1100px){.match-team{max-width:350px}}
 
 /* === ANIMATIONS === */
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -268,9 +289,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* === VALUE CHIP enhancement === */
 .odds-chip.value{animation:fadeIn .4s ease}
 
-/* === DESKTOP SIDEBAR (1200px+) === */
-@media(min-width:1200px){
-  #app{max-width:1100px;display:grid;grid-template-columns:280px 1fr;gap:0}
-  .header{grid-column:1/-1}
-  .bottom-nav{display:none}
+/* === DESKTOP ENHANCEMENTS === */
+@media(min-width:1100px){
+  .picks-section{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 }

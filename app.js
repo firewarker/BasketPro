@@ -411,28 +411,27 @@ function predict(hD,aD,game,brefData){
   };
 }
 
-// ═══ REGRESSION SCORE — Punteggio multi-fattore 0-100 con tier ═══
-// Adattato da BettingPro per basket: 6 fattori pesati → Gold/Silver/Bronze/Skip
+// ═══ REGRESSION SCORE — 7 fattori pesati 0-100 con tier ═══
+// Adattato da BettingPro: Gold/Silver/Bronze/Skip + Smart Money
 function calcRegressionScore(pred,hD,aD,game,odds){
   const cl=(lo,v,hi)=>Math.max(lo,Math.min(hi,v));
   const factors=[];let totS=0,totW=0;
 
-  // 1. PROBABILITÀ MODELLO (20%) — quanto è convinto il consensus
-  // Nel basket 55-75% è il range realistico
-  {const w=20;const favP=pred.winnerProb*100;
-  const s=cl(0,(favP-45)/30*100,100); // 45%=0, 75%=100
+  // 1. PROBABILITÀ MODELLO (18%)
+  {const w=18;const favP=pred.winnerProb*100;
+  const s=cl(0,(favP-45)/30*100,100);
   factors.push({n:'🎯 Prob Modello',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
   totS+=s*w;totW+=w}
 
-  // 2. CONCORDANZA MODELLI (20%) — quanti dei 6 modelli concordano
-  {const w=20;const favDir=pred.winner;
+  // 2. CONCORDANZA MODELLI (17%)
+  {const w=17;const favDir=pred.winner;
   const agree=pred.models.filter(m=>m[favDir]>.52).length;
-  const s=cl(0,agree/6*100,100); // 6/6=100, 4/6=67, 3/6=50
+  const s=cl(0,agree/6*100,100);
   factors.push({n:'🤝 Concordanza',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
   totS+=s*w;totW+=w}
 
-  // 3. CONFERMA QUOTE (15%) — le quote dei bookmaker confermano?
-  {const w=15;let s=50;
+  // 3. CONFERMA QUOTE (13%)
+  {const w=13;let s=50;
   if(odds){
     const bk=odds.bookmakers?.[0];
     const h2hMkt=bk?.markets?.find(m=>m.key==='h2h');
@@ -441,31 +440,69 @@ function calcRegressionScore(pred,hD,aD,game,odds){
       const favOdds=h2hMkt.outcomes?.find(o=>o.name===favName)?.price;
       if(favOdds){
         const impliedProb=1/favOdds;
-        // Se quote confermano (implied > 50%) → bonus
-        s=cl(0,(impliedProb-0.30)/0.40*100,100); // 30%=0, 70%=100
+        s=cl(0,(impliedProb-0.30)/0.40*100,100);
       }
     }
   }
   factors.push({n:'💰 Conferma Quote',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
   totS+=s*w;totW+=w}
 
-  // 4. NET RATING DIFF (15%) — nel basket una diff di 5+ è molto significativa
-  {const w=15;const diff=Math.abs(hD.net-aD.net);
-  const s=cl(0,diff/10*100,100); // 0 pts=0, 10+ pts=100
+  // 4. NET RATING DIFF (13%)
+  {const w=13;const diff=Math.abs(hD.net-aD.net);
+  const s=cl(0,diff/10*100,100);
   factors.push({n:'📊 Net Rating',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
   totS+=s*w;totW+=w}
 
-  // 5. FORMA RECENTE (15%) — win% ultime 6 partite del favorito
-  {const w=15;const favD=pred.winner==='home'?hD:aD;
+  // 5. FORMA RECENTE (13%)
+  {const w=13;const favD=pred.winner==='home'?hD:aD;
   const favFormW=favD.form.filter(f=>f==='W').length/Math.max(favD.form.length,1);
-  const s=cl(0,(favFormW-0.2)/0.6*100,100); // 20%W=0, 80%W=100
+  const s=cl(0,(favFormW-0.2)/0.6*100,100);
   factors.push({n:'🔥 Forma',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
   totS+=s*w;totW+=w}
 
-  // 6. ELO GAP (15%) — distanza Elo tra le squadre
-  {const w=15;const gap=Math.abs(pred.hElo-pred.aElo);
-  const s=cl(0,gap/250*100,100); // 0=0, 250+=100
+  // 6. ELO GAP (13%)
+  {const w=13;const gap=Math.abs(pred.hElo-pred.aElo);
+  const s=cl(0,gap/250*100,100);
   factors.push({n:'⚡ Elo Gap',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
+  totS+=s*w;totW+=w}
+
+  // 7. SMART MONEY (13%) — Consensus bookmaker vs modello
+  // Se più bookmaker concordano col nostro modello → smart money conferma
+  // Se le quote divergono dal modello → possibile sharp action contraria
+  {const w=13;let s=50; // default neutro se no odds
+  if(odds&&odds.bookmakers&&odds.bookmakers.length>0){
+    const favName=pred.winner==='home'?odds.home_team:odds.away_team;
+    const undName=pred.winner==='home'?odds.away_team:odds.home_team;
+    let bkAgree=0,bkTotal=0;
+    let avgFavOdds=0,avgUndOdds=0,oddsCount=0;
+    // Scan all bookmakers
+    odds.bookmakers.forEach(bk=>{
+      const h2hMkt=bk.markets?.find(m=>m.key==='h2h');
+      if(!h2hMkt)return;
+      const favO=h2hMkt.outcomes?.find(o=>o.name===favName)?.price;
+      const undO=h2hMkt.outcomes?.find(o=>o.name===undName)?.price;
+      if(favO&&undO){
+        bkTotal++;
+        if(favO<undO)bkAgree++; // bookmaker agrees with model
+        avgFavOdds+=favO;avgUndOdds+=undO;oddsCount++;
+      }
+    });
+    if(bkTotal>0){
+      const agreeRate=bkAgree/bkTotal; // % di bookmaker che concordano
+      // Edge: differenza tra nostra prob e implied odds media
+      if(oddsCount>0){
+        avgFavOdds/=oddsCount;avgUndOdds/=oddsCount;
+        const impliedFav=1/avgFavOdds;
+        const modelFav=pred.winnerProb;
+        const edge=modelFav-impliedFav; // positivo = noi più convinti del mercato
+        // Smart Money score: agreement + edge combo
+        s=cl(0,agreeRate*70 + cl(-15,edge*200,30),100);
+      }else{
+        s=cl(0,agreeRate*100,100);
+      }
+    }
+  }
+  factors.push({n:'💎 Smart Money',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});
   totS+=s*w;totW+=w}
 
   const final=totW>0?totS/totW:50;
