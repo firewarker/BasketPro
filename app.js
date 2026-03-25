@@ -197,10 +197,10 @@ function headToHead(tid,opp){
   const all=Object.values(S.gamesCache).flat();
   const m=all.filter(g=>['FT','AOT'].includes(g.status?.short)&&
     ((g.teams.home.id===tid&&g.teams.away.id===opp)||(g.teams.home.id===opp&&g.teams.away.id===tid)));
-  let w=0,myPts=0,totalPts=0;
+  let w=0,pts=0;
   m.forEach(g=>{const h=g.teams.home.id===tid;const my=h?g.scores.home.total:g.scores.away.total;
-    const op=h?g.scores.away.total:g.scores.home.total;if(my>op)w++;myPts+=my;totalPts+=(my+op)});
-  return{w,n:m.length,avgPts:m.length?totalPts/m.length:0,avgMyPts:m.length?myPts/m.length:0};
+    const op=h?g.scores.away.total:g.scores.home.total;if(my>op)w++;pts+=my});
+  return{w,n:m.length,avgPts:m.length?pts/m.length:0};
 }
 
 function buildElo(games){
@@ -385,68 +385,6 @@ function calcValue(pred,odds){
   return vals.length?vals.sort((a,b)=>b.edge-a.edge):null;
 }
 
-// ═══ REGRESSION SCORE (6 fattori pesati — stile BettingPro) ═══
-function calcRegression(pred,hD,aD,game){
-  const factors=[];let totS=0,totW=0;
-  const favP=Math.max(pred.home,pred.away)*100;
-  const isFavHome=pred.home>=pred.away;
-
-  // 1. Probabilità del modello (20%) — quanto è convinto il consensus
-  {const w=20;const s=clamp(0,(favP-40)/30*100,100);
-  factors.push({n:'Prob Modello',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-
-  // 2. Concordanza modelli (20%) — quanti dei 6 modelli concordano col favorito
-  {const w=20;const dir=isFavHome?'home':'away';
-  const concordi=pred.models.filter(m=>m[dir]>.52).length;
-  const s=clamp(0,concordi/6*100,100);
-  factors.push({n:'Concordanza',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-
-  // 3. Conferma Quote (20%) — le quote dei bookmaker confermano?
-  {const w=20;let s=50;
-  if(game._odds){
-    const bk=game._odds.bookmakers?.[0];
-    const h2h=bk?.markets?.find(m=>m.key==='h2h');
-    if(h2h){
-      const hOdds=h2h.outcomes?.[0]?.price||2;
-      const aOdds=h2h.outcomes?.[1]?.price||2;
-      const bkFavProb=isFavHome?1/hOdds:1/aOdds;
-      const totalMarg=1/hOdds+1/aOdds;
-      const bkFavNorm=bkFavProb/totalMarg*100;
-      s=clamp(0,(bkFavNorm-30)/35*100,100);
-    }
-  }
-  factors.push({n:'Conferma Quote',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-
-  // 4. Net Rating Gap (15%) — differenza forza reale (nel basket 3+ è significativo)
-  {const w=15;const diff=Math.abs(hD.net-aD.net);
-  const s=clamp(0,diff/8*100,100);
-  factors.push({n:'Net Rating',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-
-  // 5. Forma recente del favorito (15%) — win rate ultime 6
-  {const w=15;const favD=isFavHome?hD:aD;
-  const favWR=favD.form.filter(f=>f==='W').length/Math.max(favD.form.length,1);
-  const s=clamp(0,(favWR-0.2)/0.6*100,100);
-  factors.push({n:'Forma Favorito',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-
-  // 6. Elo Gap (10%) — differenza Elo (100+ punti è significativo nel basket)
-  {const w=10;const gap=Math.abs((S.elo[game.teams.home.id]||1500)-(S.elo[game.teams.away.id]||1500));
-  const s=clamp(0,gap/200*100,100);
-  factors.push({n:'Elo Gap',s:Math.round(s),w,c:s>65?'var(--green)':s>40?'var(--gold)':'var(--red)'});totS+=s*w;totW+=w}
-
-  const final=totW>0?totS/totW:50;
-  let grade,gc;
-  if(final>=78){grade='A+';gc='var(--green)'}
-  else if(final>=68){grade='A';gc='var(--cyan)'}
-  else if(final>=58){grade='B+';gc='var(--blue)'}
-  else if(final>=48){grade='B';gc='var(--gold)'}
-  else if(final>=38){grade='C';gc='var(--red)'}
-  else{grade='D';gc='var(--red)'}
-
-  const rec=final>=68?'FORTE':final>=50?'GIOCABILE':'EVITARE';
-  const favName=isFavHome?game.teams.home.name:game.teams.away.name;
-  return{score:Math.round(final),grade,gc,rec,factors,favName};
-}
-
 // ═══ AI ANALYSIS (Groq via Worker) ═══
 async function askAI(game,pred,hD,aD){
   const key=game.id;
@@ -579,20 +517,6 @@ async function analyzeMatch(game){
     const odds=S.odds[hKey]||null;
     if(odds)game._odds=odds;
     game._value=calcValue(pred,odds);
-
-    // Calculate Regression Score
-    game._regression=calcRegression(pred,hD,aD,game);
-
-    // Save prediction to Firebase
-    saveToFirebase(`predictions/${game.id}`,{
-      match:`${game.teams.home.name} vs ${game.teams.away.name}`,
-      home:Math.round(pred.home*100),away:Math.round(pred.away*100),
-      predScore:`${pred.predH}-${pred.predA}`,
-      ou:`O${fm(pred.pOver,0)}/U${fm(pred.pUnder,0)} L${fm(pred.line,1)}`,
-      regression:game._regression?game._regression.grade:'—',
-      confidence:pred.confidence,
-      timestamp:new Date().toISOString()
-    });
 
     // Load AI analysis (non-blocking)
     askAI(game,pred,hD,aD).then(text=>{
@@ -817,7 +741,7 @@ function renderMatches(){
 
   h+='<div class="section-title">Tutte le partite</div>';
   S.matches.forEach(g=>{
-    const isLive=LIVE_STATUSES.includes(g.status?.short);
+    const isLive=['1H','2H','HT','QT1','QT2','QT3','QT4'].includes(g.status?.short);
     const isFT=['FT','AOT'].includes(g.status?.short);
     const p=g._pred;
     
@@ -844,18 +768,14 @@ function renderMatches(){
 
 
     h+=`<div class="match-item" data-match="${g.id}">
-      <div class="match-time${isLive?' live':''}">${isLive?`<span class="live-dot"></span>${getQuarterLabel(g.status?.short)}`:isFT?'FT':formatTime(g.date)}</div>
+      <div class="match-time${isLive?' live':''}">${isLive?'LIVE':isFT?'FT':formatTime(g.date)}</div>
       <div class="match-teams">
         <div class="match-team home">${g.teams.home.name}</div>
         <div class="match-team">${g.teams.away.name}</div>
       </div>
-      ${isFT||isLive?`<div class="match-scores${isLive?' live-scores':''}"><span>${g.scores?.home?.total??'—'}</span><span>${g.scores?.away?.total??'—'}</span></div>`:''}
+      ${isFT||isLive?`<div class="match-scores"><span>${g.scores.home.total??'—'}</span><span>${g.scores.away.total??'—'}</span></div>`:''}
       ${quickH}
     </div>`;
-    if(isLive){
-      const qs=renderQuarterScores(g);
-      if(qs)h+=`<div class="live-quarters">${qs}</div>`;
-    }
   });
   return h;
 }
@@ -930,30 +850,6 @@ function renderAnalysis(){
   </div></div>`;
 
   // === MODEL DETAILS ===
-  // === REGRESSION SCORE ===
-  if(g._regression){
-    const rg=g._regression;
-    h+=`<div class="panel fade-in"><div class="panel-header" data-toggle="regression"><div class="panel-title">📊 Regression Score — <span style="color:${rg.gc};font-weight:800">${rg.grade}</span> <span style="font-size:.7rem;color:var(--text-g)">(${rg.score}/100)</span></div><div class="panel-chevron">▼</div></div>`;
-    h+='<div class="panel-body open">';
-    h+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-      <div style="font-size:2rem;font-weight:800;color:${rg.gc}">${rg.grade}</div>
-      <div><div style="font-size:.82rem;font-weight:600">${rg.favName}</div>
-      <div style="font-size:.7rem;color:${rg.rec==='FORTE'?'var(--green)':rg.rec==='GIOCABILE'?'var(--gold)':'var(--red)'};font-weight:700">${rg.rec}</div></div>
-      <div style="flex:1;text-align:right"><div style="font-family:var(--mono);font-size:1.4rem;font-weight:700;color:${rg.gc}">${rg.score}</div><div style="font-size:.6rem;color:var(--text-d)">/100</div></div>
-    </div>`;
-    // Progress bar
-    h+=`<div style="height:6px;border-radius:3px;background:var(--bg-surface);margin-bottom:12px;overflow:hidden"><div style="height:100%;width:${rg.score}%;border-radius:3px;background:${rg.gc};transition:width .6s ease"></div></div>`;
-    // Factors
-    rg.factors.forEach(f=>{
-      h+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <div style="font-size:.7rem;color:var(--text-g);min-width:110px">${f.n}</div>
-        <div style="flex:1;height:4px;border-radius:2px;background:var(--bg-surface);overflow:hidden"><div style="height:100%;width:${f.s}%;border-radius:2px;background:${f.c}"></div></div>
-        <div style="font-family:var(--mono);font-size:.68rem;font-weight:600;min-width:30px;text-align:right;color:${f.c}">${f.s}</div>
-      </div>`;
-    });
-    h+='</div></div>';
-  }
-
   h+='<div class="panel fade-in"><div class="panel-header" data-toggle="models"><div class="panel-title">📊 Dettaglio 6 modelli</div><div class="panel-chevron">▼</div></div>';
   h+='<div class="panel-body"><div class="model-row">';
   p.models.forEach(m=>{
