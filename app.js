@@ -536,70 +536,74 @@ async function analyzeMatch(game){
 }
 
 // ═══ LOAD MATCHES ═══
+// Helper per caricare a gruppi (evita rate limit sul Worker)
+async function batchLoad(items,fn,batchSize=4){
+  const results=[];
+  for(let i=0;i<items.length;i+=batchSize){
+    const chunk=items.slice(i,i+batchSize);
+    const r=await Promise.all(chunk.map(fn));
+    results.push(...r);
+  }
+  return results;
+}
+
 async function loadMatches(){
   if(!S.league)return;
   S.loading=true;S.view='matches';S.matches=[];render();
 
-  const date=getDateStr(S.dateOffset);
-  const games=await loadGamesForLeague(S.league.id,date);
-  // Carica i salvataggi da Firebase per preservare le previsioni originali
-  const fbPath = `predictions/${S.league.id}_${date}`;
-  const fbGames = await loadFromFirebase(fbPath) || [];
-  const fbGamesMap = {};
-  fbGames.forEach(g => fbGamesMap[g.id] = g);
+  try{
+    const date=getDateStr(S.dateOffset);
+    const games=await loadGamesForLeague(S.league.id,date);
 
+    if(!games||!games.length){
+      S.matches=[];S.loading=false;render();return;
+    }
 
-
-  // Quick Elo + quick predictions for match list
-  if(games.length){
     const allGames=[];
-    // Load recent games for all teams to get quick stats
-    const teamIds=new Set();
-    games.forEach(g=>{teamIds.add(g.teams.home.id);teamIds.add(g.teams.away.id)});
-
-    const loads=[];
-    teamIds.forEach(tid=>{loads.push(loadTeamGames(tid,S.league.id,S.league.season))});
-    const allResults=await Promise.all(loads);
-    allResults.forEach(g=>{if(g&&g.length)allGames.push(...g);});
+    // Carica partite storiche squadre a GRUPPI di 4 (evita rate limit)
+    const teamIds=[...new Set(games.flatMap(g=>[g.teams.home.id,g.teams.away.id]))];
+    const teamResults=await batchLoad(
+      teamIds,
+      tid=>loadTeamGames(tid,S.league.id,S.league.season),
+      4
+    );
+    teamResults.forEach(g=>{if(g&&g.length)allGames.push(...g);});
 
     // Build Elo
     const eloMap=buildElo(allGames);
     Object.assign(S.elo,eloMap);
 
-    // Load B-Ref for NBA
-    if(S.league.id===12)await loadBRefAdvanced();
-
-    // Load odds for NBA / Euroleague
-    if(S.league.id===12)await loadOdds('basketball_nba');
+    // Extra per NBA
+    if(S.league.id===12){
+      await loadBRefAdvanced();
+      await loadOdds('basketball_nba');
+    }
     if(S.league.id===13)await loadOdds('basketball_euroleague');
 
-    // Quick predict each match
-    let needsFbUpdate = false;
+    // Quick predict ogni partita
     games.forEach(game=>{
-      const cached = fbGamesMap[game.id];
-      if(cached && cached._pred){
-        game._pred = cached._pred;
-      } else {
-      const hid=game.teams.home.id,aid=game.teams.away.id;
-      const hGames=S.gamesCache['g_'+hid+'_'+S.league.season]||[];
-      const aGames=S.gamesCache['g_'+aid+'_'+S.league.season]||[];
-      const hD=analyzeTeam(hGames,hid);
-      const aD=analyzeTeam(aGames,aid);
-      if(hD&&aD){
-        game._hD=hD;game._aD=aD;
-        game._pred=predict(hD,aD,game,S.bref);
-        needsFbUpdate = true;
-      }
-      }
+      try{
+        const hid=game.teams.home.id,aid=game.teams.away.id;
+        const hGames=S.gamesCache['g_'+hid+'_'+S.league.season]||[];
+        const aGames=S.gamesCache['g_'+aid+'_'+S.league.season]||[];
+        const hD=analyzeTeam(hGames,hid);
+        const aD=analyzeTeam(aGames,aid);
+        if(hD&&aD){
+          game._hD=hD;game._aD=aD;
+          game._pred=predict(hD,aD,game,S.bref);
+        }
+      }catch(e){console.warn('predict error',game.id,e.message);}
     });
 
-    // Salva o aggiorna su Firebase
-    if(needsFbUpdate || games.some(g=>['FT','AOT'].includes(g.status?.short))) {
-      saveToFirebase(fbPath, games);
-    }
+  }catch(err){
+    console.error('loadMatches error',err);
+    S.matches=[];
   }
 
-  S.matches=games;
+  // Se ancora vuoto (es. per errore), usa quello che c'è nel cache
+  if(!S.matches.length && S.gamesCache[S.league.id+'_'+getDateStr(S.dateOffset)]){
+    S.matches=S.gamesCache[S.league.id+'_'+getDateStr(S.dateOffset)]||[];
+  }
   calculatePicks();
   S.loading=false;
   render();
