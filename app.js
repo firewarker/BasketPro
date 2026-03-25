@@ -6,17 +6,31 @@
 const W = 'https://basketproai.lucalagan.workers.dev';
 const FB = 'https://basketpro-1a28b-default-rtdb.europe-west1.firebasedatabase.app';
 
+// Lista espansa per trovare tutti i campionati principali e secondari
 const LEAGUES = [
-  { id:12, name:'NBA',            country:'USA',     flag:'🇺🇸', season:'2025-2026', top:true },
-  { id:13, name:'Euroleague',     country:'Europa',  flag:'🇪🇺', season:'2025-2026', top:true },
-  { id:117,name:'Liga ACB',       country:'Spagna',  flag:'🇪🇸', season:'2025-2026', top:true },
-  { id:120,name:'Serie A',        country:'Italia',  flag:'🇮🇹', season:'2025-2026' },
-  { id:116,name:'NCAA',           country:'USA',     flag:'🇺🇸', season:'2025-2026' },
-  { id:5,  name:'Pro A',          country:'Francia', flag:'🇫🇷', season:'2025-2026' },
-  { id:4,  name:'BBL',            country:'Germania',flag:'🇩🇪', season:'2025-2026' },
-  { id:2,  name:'Greek League',   country:'Grecia',  flag:'🇬🇷', season:'2025-2026' },
-  { id:22, name:'BSL',            country:'Turchia', flag:'🇹🇷', season:'2025-2026' },
-  { id:80, name:'CBA',            country:'Cina',    flag:'🇨🇳', season:'2025-2026' },
+  { id:12, name:'NBA', country:'USA', flag:'🇺🇸', season:'2025-2026', top:true },
+  { id:13, name:'Euroleague', country:'Europa', flag:'🇪🇺', season:'2025-2026', top:true },
+  { id:117,name:'Liga ACB', country:'Spagna', flag:'🇪🇸', season:'2025-2026', top:true },
+  { id:120,name:'Serie A', country:'Italia', flag:'🇮🇹', season:'2025-2026', top:true },
+  { id:116,name:'NCAA', country:'USA', flag:'🇺🇸', season:'2025-2026' },
+  { id:142,name:'Lega A2', country:'Italia', flag:'🇮🇹', season:'2025-2026' },
+  { id:5,  name:'Pro A', country:'Francia', flag:'🇫🇷', season:'2025-2026' },
+  { id:4,  name:'BBL', country:'Germania', flag:'🇩🇪', season:'2025-2026' },
+  { id:2,  name:'Greek League', country:'Grecia', flag:'🇬🇷', season:'2025-2026' },
+  { id:22, name:'BSL', country:'Turchia', flag:'🇹🇷', season:'2025-2026' },
+  { id:80, name:'CBA', country:'Cina', flag:'🇨🇳', season:'2025-2026' },
+  { id:15, name:'Eurocup', country:'Europa', flag:'🇪🇺', season:'2025-2026' },
+  { id:18, name:'Champions League', country:'Europa', flag:'🇪🇺', season:'2025-2026' },
+  { id:19, name:'BNXT League', country:'Belgio/Olanda', flag:'🇧🇪', season:'2025-2026' },
+  { id:7,  name:'VTB United League', country:'Russia', flag:'🇷🇺', season:'2025-2026' },
+  { id:24, name:'KBL', country:'Corea del Sud', flag:'🇰🇷', season:'2025-2026' },
+  { id:21, name:'NBL', country:'Australia', flag:'🇦🇺', season:'2025-2026' },
+  { id:20, name:'B.League', country:'Giappone', flag:'🇯🇵', season:'2025-2026' },
+  { id:26, name:'Super League', country:'Israele', flag:'🇮🇱', season:'2025-2026' },
+  { id:119,name:'Liga Nacional', country:'Argentina', flag:'🇦🇷', season:'2025-2026' },
+  { id:118,name:'NBB', country:'Brasile', flag:'🇧🇷', season:'2025-2026' },
+  { id:23, name:'LKL', country:'Lituania', flag:'🇱🇹', season:'2025-2026' },
+  { id:6,  name:'PBL', country:'Polonia', flag:'🇵🇱', season:'2025-2026' },
 ];
 
 // ═══ STATE ═══
