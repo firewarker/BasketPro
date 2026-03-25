@@ -308,7 +308,7 @@ function predict(hD,aD,game,brefData){
   return{
     models:results,home:cH,away:cA,
     predH,predA,predTotal,
-    line,pOver,pUnder,stdDev,ouReason,
+    line,pOver,pUnder,stdDev:effectiveStd,ouReason,
     hElo,aElo,h2h,
     confidence:Math.abs(cH-cA)>.15?'high':Math.abs(cH-cA)>.08?'medium':'low',
     winner:cH>=cA?'home':'away',
