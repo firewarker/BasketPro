@@ -54,7 +54,8 @@ function pct(v){return fm(v,0)+'%'}
 
 function getDateStr(off=0){
   const d=new Date();d.setDate(d.getDate()+off);
-  return d.toISOString().split('T')[0];
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
 }
 function getDateLabel(off){
   if(off===0)return'Oggi';if(off===1)return'Domani';if(off===-1)return'Ieri';
@@ -74,10 +75,10 @@ async function callWorker(path){
   }catch(e){console.warn('Worker error:',path,e.message);return null}
 }
 
-async function loadGamesForLeague(leagueId,date){
+async function loadGamesForLeague(leagueId,date,season){
   const key=leagueId+'_'+date;
   if(S.gamesCache[key])return S.gamesCache[key];
-  const d=await callWorker(`/api/basketball/games?league=${leagueId}&date=${date}&timezone=Europe/Rome`);
+  const d=await callWorker(`/api/basketball/games?league=${leagueId}&season=${season}&date=${date}&timezone=Europe/Rome`);
   const games=(d?.response||[]).filter(g=>g.teams?.home&&g.teams?.away);
   S.gamesCache[key]=games;
   return games;
@@ -456,7 +457,7 @@ async function loadMatches(){
   S.loading=true;S.view='matches';S.matches=[];render();
 
   const date=getDateStr(S.dateOffset);
-  const games=await loadGamesForLeague(S.league.id,date);
+  const games=await loadGamesForLeague(S.league.id,date,S.league.season);
 
   // Quick Elo + quick predictions for match list
   if(games.length){
