@@ -1048,14 +1048,73 @@ function renderAnalysis(){
     </div>
   </div></div>`;
 
-  // === FLAG ALERTS (B2B, Trap) ===
-  if(p.flags&&p.flags.length){
-    p.flags.forEach(f=>{
-      const color=f.type==='b2b'?'var(--gold)':'var(--red)';
-      const icon=f.type==='b2b'?'⏰':'🪤';
-      h+=`<div style="margin:0 16px 6px;padding:10px 14px;background:${color}10;border:1px solid ${color}25;border-radius:var(--radius-sm);font-size:.75rem;color:${color};font-weight:500">${icon} ${f.label}</div>`;
-    });
+  // === SEGNALI DI RISCHIO (sempre visibili) ===
+  const confColor=p.confidence==='high'?'var(--green)':p.confidence==='medium'?'var(--gold)':'var(--red)';
+  const confLabel=p.confidence==='high'?'ALTA':p.confidence==='medium'?'MEDIA':'BASSA';
+  const confIcon=p.confidence==='high'?'🟢':p.confidence==='medium'?'🟡':'🔴';
+
+  h+=`<div class="panel fade-in"><div class="panel-header" data-toggle="signals"><div class="panel-title">🛡️ Segnali di rischio</div><div class="panel-chevron open">▼</div></div>`;
+  h+='<div class="panel-body open">';
+
+  // Confidence badge
+  h+=`<div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;margin-bottom:12px;background:${confColor}12;border:1px solid ${confColor}25;border-radius:var(--radius-sm)">
+    <span style="font-size:1.1rem">${confIcon}</span>
+    <span style="font-size:.85rem;font-weight:700;color:${confColor}">Confidenza ${confLabel}</span>
+    <span style="font-size:.72rem;color:var(--text-g)">(gap ${pct(Math.abs(p.home-p.away)*100)})</span>
+  </div>`;
+
+  // Signal rows
+  function sigRow(icon,label,hVal,aVal,hColor,aColor){
+    return`<div style="display:flex;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+      <div style="width:24px;font-size:.85rem;text-align:center">${icon}</div>
+      <div style="width:100px;font-size:.72rem;color:var(--text-g)">${label}</div>
+      <div style="flex:1;text-align:center;font-size:.72rem;font-weight:600;color:${hColor}">${hVal}</div>
+      <div style="flex:1;text-align:center;font-size:.72rem;font-weight:600;color:${aColor}">${aVal}</div>
+    </div>`;
   }
+
+  // Header
+  h+=`<div style="display:flex;align-items:center;padding:4px 0 6px;border-bottom:1px solid var(--border)">
+    <div style="width:124px"></div>
+    <div style="flex:1;text-align:center;font-size:.65rem;font-weight:600;color:var(--accent)">${g.teams.home.name.split(' ').pop()}</div>
+    <div style="flex:1;text-align:center;font-size:.65rem;font-weight:600;color:var(--blue)">${g.teams.away.name.split(' ').pop()}</div>
+  </div>`;
+
+  // Rest Days
+  const hRestC=hD.isBackToBack?'var(--red)':hD.restDays<=1?'var(--gold)':'var(--green)';
+  const aRestC=aD.isBackToBack?'var(--red)':aD.restDays<=1?'var(--gold)':'var(--green)';
+  h+=sigRow('⏰','Riposo',
+    `${hD.restDays}g${hD.isBackToBack?' ⚠️ B2B':''}`,
+    `${aD.restDays}g${aD.isBackToBack?' ⚠️ B2B':''}`,
+    hRestC, aRestC);
+
+  // Trap Score
+  const hTrapC=hD.trapScore>=2?'var(--red)':hD.trapScore>=1?'var(--gold)':'var(--green)';
+  const aTrapC=aD.trapScore>=2?'var(--red)':aD.trapScore>=1?'var(--gold)':'var(--green)';
+  h+=sigRow('🪤','Trap Score',
+    `${hD.trapScore}/3${hD.trapScore>=2?' ⚠️ TRAP':''}`,
+    `${aD.trapScore}/3${aD.trapScore>=2?' ⚠️ TRAP':''}`,
+    hTrapC, aTrapC);
+
+  // Clutch
+  const hClC=hD.clutchRatio>.35?'var(--green)':hD.clutchRatio>.25?'var(--gold)':'var(--text-g)';
+  const aClC=aD.clutchRatio>.35?'var(--green)':aD.clutchRatio>.25?'var(--gold)':'var(--text-g)';
+  h+=sigRow('🎯','Clutch (≤5pts)',pct(hD.clutchRatio*100),pct(aD.clutchRatio*100),hClC,aClC);
+
+  // Streak
+  const hSkC=hD.streak>0?'var(--green)':hD.streak<0?'var(--red)':'var(--text-g)';
+  const aSkC=aD.streak>0?'var(--green)':aD.streak<0?'var(--red)':'var(--text-g)';
+  h+=sigRow('🔥','Streak',
+    `${hD.streak>0?'+':''}${hD.streak}`,
+    `${aD.streak>0?'+':''}${aD.streak}`,
+    hSkC, aSkC);
+
+  // Over Rate
+  h+=sigRow('📈','Over Rate',pct(hD.overRate*100),pct(aD.overRate*100),
+    hD.overRate>.55?'var(--green)':'var(--text-g)',
+    aD.overRate>.55?'var(--green)':'var(--text-g)');
+
+  h+='</div></div>';
 
   // === MODEL DETAILS ===
   h+='<div class="panel fade-in"><div class="panel-header" data-toggle="models"><div class="panel-title">📊 Dettaglio 6 modelli</div><div class="panel-chevron">▼</div></div>';
