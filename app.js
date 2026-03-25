@@ -67,6 +67,25 @@ function formatTime(dateStr){
 }
 
 // ═══ API LAYER ═══
+
+async function saveToFirebase(path, data) {
+  try {
+    await fetch(`${FB}/${path}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch(e) { console.error('Firebase save error:', e); }
+}
+
+async function loadFromFirebase(path) {
+  try {
+    const r = await fetch(`${FB}/${path}.json`);
+    if(r.ok) return await r.json();
+  } catch(e) { console.error('Firebase load error:', e); }
+  return null;
+}
+
 async function callWorker(path){
   try{
     const r=await fetch(W+path,{signal:AbortSignal.timeout(12000)});
@@ -458,6 +477,13 @@ async function loadMatches(){
 
   const date=getDateStr(S.dateOffset);
   const games=await loadGamesForLeague(S.league.id,date,S.league.season);
+  // Carica i salvataggi da Firebase per preservare le previsioni originali
+  const fbPath = `predictions/${S.league.id}_${date}`;
+  const fbGames = await loadFromFirebase(fbPath) || [];
+  const fbGamesMap = {};
+  fbGames.forEach(g => fbGamesMap[g.id] = g);
+
+
 
   // Quick Elo + quick predictions for match list
   if(games.length){
@@ -483,7 +509,12 @@ async function loadMatches(){
     if(S.league.id===13)await loadOdds('basketball_euroleague');
 
     // Quick predict each match
+    let needsFbUpdate = false;
     games.forEach(game=>{
+      const cached = fbGamesMap[game.id];
+      if(cached && cached._pred){
+        game._pred = cached._pred;
+      } else {
       const hid=game.teams.home.id,aid=game.teams.away.id;
       const hGames=S.gamesCache['g_'+hid+'_'+S.league.season]||[];
       const aGames=S.gamesCache['g_'+aid+'_'+S.league.season]||[];
@@ -492,8 +523,15 @@ async function loadMatches(){
       if(hD&&aD){
         game._hD=hD;game._aD=aD;
         game._pred=predict(hD,aD,game,S.bref);
+        needsFbUpdate = true;
+      }
       }
     });
+
+    // Salva o aggiorna su Firebase
+    if(needsFbUpdate || games.some(g=>['FT','AOT'].includes(g.status?.short))) {
+      saveToFirebase(fbPath, games);
+    }
   }
 
   S.matches=games;
@@ -552,6 +590,21 @@ function renderHome(){
     h+='<div class="section-title">Picks del giorno</div><div class="picks-section">';
     S.picks.slice(0,8).forEach(pk=>{
       const conf=pk.confidence==='high'?'high':pk.confidence==='medium'?'medium':'low';
+          // Add checkmarks to picks
+          let pickIcon='';
+          if(pk.game.scores && ['FT','AOT'].includes(pk.game.status?.short)) {
+            const h=pk.game.scores.home.total, a=pk.game.scores.away.total;
+            if(pk.type==='winner'){
+               const actW = h>a ? pk.game.teams.home.name : pk.game.teams.away.name;
+               pickIcon = (pk.bet === actW) ? ' ✅' : ' ❌';
+            } else if(pk.type==='over' || pk.type==='under'){
+               const t = h+a;
+               const actOU = t>pk.line?'over':(t<pk.line?'under':'push');
+               pickIcon = (actOU==='push') ? ' ➖' : (pk.type===actOU ? ' ✅' : ' ❌');
+            }
+          }
+          const betText = `<div class="pick-bet${pk.type!=='winner'?' over':''}">${pk.bet}${pickIcon}</div>`;
+
       h+=`<div class="pick-card" data-pickgame="${pk.game.id}">
         <div class="pick-top"><div class="pick-match">${pk.matchName}</div><div class="pick-league">${pk.league} ${pk.time}</div></div>
         <div class="pick-bottom">
@@ -581,10 +634,25 @@ function renderMatches(){
     h+='<div class="section-title">Migliori picks</div><div class="picks-section">';
     S.picks.slice(0,3).forEach(pk=>{
       const conf=pk.confidence==='high'?'high':pk.confidence==='medium'?'medium':'low';
+          // Add checkmarks to picks
+          let pickIcon='';
+          if(pk.game.scores && ['FT','AOT'].includes(pk.game.status?.short)) {
+            const h=pk.game.scores.home.total, a=pk.game.scores.away.total;
+            if(pk.type==='winner'){
+               const actW = h>a ? pk.game.teams.home.name : pk.game.teams.away.name;
+               pickIcon = (pk.bet === actW) ? ' ✅' : ' ❌';
+            } else if(pk.type==='over' || pk.type==='under'){
+               const t = h+a;
+               const actOU = t>pk.line?'over':(t<pk.line?'under':'push');
+               pickIcon = (actOU==='push') ? ' ➖' : (pk.type===actOU ? ' ✅' : ' ❌');
+            }
+          }
+          const betText = `<div class="pick-bet${pk.type!=='winner'?' over':''}">${pk.bet}${pickIcon}</div>`;
+
       h+=`<div class="pick-card" data-match="${pk.game.id}">
         <div class="pick-top"><div class="pick-match">${pk.matchName}</div></div>
         <div class="pick-bottom">
-          <div class="pick-bet${pk.type!=='winner'?' over':''}">${pk.bet}</div>
+          ${betText}
           <div class="pick-confidence ${conf}">${pct(pk.prob*100)}</div>
           <div class="pick-reason">${pk.reason}</div>
         </div>
@@ -598,15 +666,28 @@ function renderMatches(){
     const isLive=['1H','2H','HT','QT1','QT2','QT3','QT4'].includes(g.status?.short);
     const isFT=['FT','AOT'].includes(g.status?.short);
     const p=g._pred;
+    
     let quickH='';
     if(p){
       const winner=p.winner==='home'?'home':'away';
       const winName=p.winner==='home'?g.teams.home.name.split(' ').pop():g.teams.away.name.split(' ').pop();
+      let winIcon=''; let ouIcon='';
+      if(isFT && g.scores.home.total != null && g.scores.away.total != null){
+        const hS=g.scores.home.total; const aS=g.scores.away.total; const aT=hS+aS;
+        const actW=hS>aS?'home':'away';
+        winIcon=(winner===actW)?' <span style="font-size:12px;margin-left:4px">✅</span>':' <span style="font-size:12px;margin-left:4px">❌</span>';
+
+        const predOU=p.pOver>=55?'over':'under';
+        let actOU=aT>p.line?'over':(aT<p.line?'under':'push');
+        if(actOU==='push') ouIcon=' ➖';
+        else ouIcon=(predOU===actOU)?' <span style="font-size:12px;margin-left:4px">✅</span>':' <span style="font-size:12px;margin-left:4px">❌</span>';
+      }
       quickH=`<div class="match-quick">
-        <div class="match-pick ${winner}">${winName} ${pct(p.winnerProb*100)}</div>
-        <div class="match-pick ${p.pOver>=55?'over':'under'}">${p.pOver>=55?'O':'U'} ${fm(p.line,0)}</div>
+        <div class="match-pick ${winner}">${winName} ${pct(p.winnerProb*100)}${winIcon}</div>
+        <div class="match-pick ${p.pOver>=55?'over':'under'}">${p.pOver>=55?'O':'U'} ${fm(p.line,0)}${ouIcon}</div>
       </div>`;
     }
+
 
     h+=`<div class="match-item" data-match="${g.id}">
       <div class="match-time${isLive?' live':''}">${isLive?'LIVE':isFT?'FT':formatTime(g.date)}</div>
