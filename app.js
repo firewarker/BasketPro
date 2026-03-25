@@ -94,10 +94,10 @@ async function callWorker(path){
   }catch(e){console.warn('Worker error:',path,e.message);return null}
 }
 
-async function loadGamesForLeague(leagueId,date,season){
-  const key=leagueId+'_'+date;
+async function loadGamesForLeague(leagueId,date){
+  const key=leagueId+"_"+date;
   if(S.gamesCache[key])return S.gamesCache[key];
-  const d=await callWorker(`/api/basketball/games?league=${leagueId}&season=${season}&date=${date}&timezone=Europe/Rome`);
+  const d=await callWorker(`/api/basketball/games?league=${leagueId}&date=${date}&timezone=Europe/Rome`);
   const games=(d?.response||[]).filter(g=>g.teams?.home&&g.teams?.away);
   S.gamesCache[key]=games;
   return games;
@@ -513,7 +513,7 @@ async function loadMatches(){
   S.loading=true;S.view='matches';S.matches=[];render();
 
   const date=getDateStr(S.dateOffset);
-  const games=await loadGamesForLeague(S.league.id,date,S.league.season);
+  const games=await loadGamesForLeague(S.league.id,date);
   // Carica i salvataggi da Firebase per preservare le previsioni originali
   const fbPath = `predictions/${S.league.id}_${date}`;
   const fbGames = await loadFromFirebase(fbPath) || [];
