@@ -7,16 +7,16 @@ const W = 'https://basketproai.lucalagan.workers.dev';
 const FB = 'https://basketpro-1a28b-default-rtdb.europe-west1.firebasedatabase.app';
 
 const LEAGUES = [
-  { id:12, name:'NBA',            country:'USA',     flag:'🇺🇸', season:'2025-2026', top:true },
-  { id:13, name:'Euroleague',     country:'Europa',  flag:'🇪🇺', season:'2025-2026', top:true },
-  { id:117,name:'Liga ACB',       country:'Spagna',  flag:'🇪🇸', season:'2025-2026', top:true },
-  { id:120,name:'Serie A',        country:'Italia',  flag:'🇮🇹', season:'2025-2026' },
-  { id:116,name:'NCAA',           country:'USA',     flag:'🇺🇸', season:'2025-2026' },
-  { id:5,  name:'Pro A',          country:'Francia', flag:'🇫🇷', season:'2025-2026' },
-  { id:4,  name:'BBL',            country:'Germania',flag:'🇩🇪', season:'2025-2026' },
-  { id:2,  name:'Greek League',   country:'Grecia',  flag:'🇬🇷', season:'2025-2026' },
-  { id:22, name:'BSL',            country:'Turchia', flag:'🇹🇷', season:'2025-2026' },
-  { id:80, name:'CBA',            country:'Cina',    flag:'🇨🇳', season:'2025-2026' },
+  { id:12, name:'NBA',            country:'USA',     flag:'🇺🇸', season:'2025', top:true },
+  { id:13, name:'Euroleague',     country:'Europa',  flag:'🇪🇺', season:'2025', top:true },
+  { id:117,name:'Liga ACB',       country:'Spagna',  flag:'🇪🇸', season:'2025', top:true },
+  { id:120,name:'Serie A',        country:'Italia',  flag:'🇮🇹', season:'2025' },
+  { id:116,name:'NCAA',           country:'USA',     flag:'🇺🇸', season:'2025' },
+  { id:5,  name:'Pro A',          country:'Francia', flag:'🇫🇷', season:'2025' },
+  { id:4,  name:'BBL',            country:'Germania',flag:'🇩🇪', season:'2025' },
+  { id:2,  name:'Greek League',   country:'Grecia',  flag:'🇬🇷', season:'2025' },
+  { id:22, name:'BSL',            country:'Turchia', flag:'🇹🇷', season:'2025' },
+  { id:80, name:'CBA',            country:'Cina',    flag:'🇨🇳', season:'2025' },
 ];
 
 // ═══ STATE ═══
