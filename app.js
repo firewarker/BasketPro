@@ -151,6 +151,124 @@ async function loadOdds(sport='basketball_nba'){
   });
 }
 
+// ═══ STAR PLAYER ABSENCE DETECTION (BallDontLie) ═══
+// Solo NBA: cerca star player (20+ PPG) assenti dalle ultime 3 partite
+const starCache={};
+
+// Mappa nomi squadre API-Basketball → BDL search terms
+const NBA_TEAM_MAP={
+  'Los Angeles Lakers':'Lakers','Boston Celtics':'Celtics','Golden State Warriors':'Warriors',
+  'Milwaukee Bucks':'Bucks','Denver Nuggets':'Nuggets','Philadelphia 76ers':'76ers',
+  'Phoenix Suns':'Suns','Miami Heat':'Heat','Dallas Mavericks':'Mavericks',
+  'Cleveland Cavaliers':'Cavaliers','Memphis Grizzlies':'Grizzlies','Sacramento Kings':'Kings',
+  'New York Knicks':'Knicks','Brooklyn Nets':'Nets','LA Clippers':'Clippers',
+  'Minnesota Timberwolves':'Timberwolves','New Orleans Pelicans':'Pelicans',
+  'Oklahoma City Thunder':'Thunder','Atlanta Hawks':'Hawks','Chicago Bulls':'Bulls',
+  'Toronto Raptors':'Raptors','Indiana Pacers':'Pacers','Orlando Magic':'Magic',
+  'Portland Trail Blazers':'Trail Blazers','Utah Jazz':'Jazz','Charlotte Hornets':'Hornets',
+  'San Antonio Spurs':'Spurs','Detroit Pistons':'Pistons','Washington Wizards':'Wizards',
+  'Houston Rockets':'Rockets',
+};
+
+async function detectStarAbsences(teamName){
+  // Solo NBA
+  const shortName=NBA_TEAM_MAP[teamName];
+  if(!shortName)return[];
+
+  const cKey='star_'+shortName;
+  if(starCache[cKey])return starCache[cKey];
+
+  try{
+    // Step 1: Trova giocatori della squadra via BDL
+    const playersRes=await callWorker(`/api/bdl/players?search=${encodeURIComponent(shortName)}&per_page=25`);
+    const players=playersRes?.data;
+    if(!players||!players.length){starCache[cKey]=[];return[];}
+
+    // Filtra solo giocatori attivi della squadra giusta
+    const teamPlayers=players.filter(p=>
+      p.team&&(p.team.full_name||'').toLowerCase().includes(shortName.toLowerCase())
+    );
+    if(!teamPlayers.length){starCache[cKey]=[];return[];}
+
+    // Step 2: Prendi le season averages per trovare gli star player
+    const pIds=teamPlayers.slice(0,15).map(p=>p.id);
+    const idsParam=pIds.map(id=>`player_ids[]=${id}`).join('&');
+    const avgRes=await callWorker(`/api/bdl/season_averages?season=2025&${idsParam}`);
+    const avgs=avgRes?.data||[];
+
+    // Star = 18+ PPG (soglia leggermente più bassa per catturare più star)
+    const stars=avgs.filter(a=>a.pts>=18).map(a=>{
+      const player=teamPlayers.find(p=>p.id===a.player_id);
+      return{
+        id:a.player_id,
+        name:player?`${player.first_name} ${player.last_name}`:'Unknown',
+        ppg:a.pts,
+        rpg:a.reb,
+        apg:a.ast,
+        gp:a.games_played
+      };
+    }).sort((a,b)=>b.ppg-a.ppg);
+
+    if(!stars.length){starCache[cKey]=[];return[];}
+
+    // Step 3: Controlla le ultime 3 date di gioco
+    const dates=[];
+    for(let i=1;i<=5;i++){
+      const d=new Date();d.setDate(d.getDate()-i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+    const datesParam=dates.map(d=>`dates[]=${d}`).join('&');
+
+    const absences=[];
+    for(const star of stars.slice(0,3)){ // max 3 star player per squadra
+      const statsRes=await callWorker(`/api/bdl/stats?${datesParam}&player_ids[]=${star.id}&per_page=10`);
+      const stats=statsRes?.data||[];
+      const gamesPlayed=stats.filter(s=>s.min&&s.min!=='00'&&s.min!=='0:00'&&parseInt(s.min)>0);
+
+      if(gamesPlayed.length===0){
+        // Star player non ha giocato nessuna partita negli ultimi 5 giorni
+        absences.push({
+          ...star,
+          status:'absent',
+          label:`${star.name} (${fm(star.ppg,1)} PPG) assente ultime partite`,
+          impact: star.ppg>=25?'critical':star.ppg>=20?'high':'moderate'
+        });
+      }else if(gamesPlayed.length===1&&dates.length>=3){
+        // Ha giocato solo 1 su 3+ → possibile gestione minutaggio
+        const lastGame=gamesPlayed[0];
+        if(parseInt(lastGame.min)<20){
+          absences.push({
+            ...star,
+            status:'limited',
+            label:`${star.name} (${fm(star.ppg,1)} PPG) minutaggio limitato (${lastGame.min} min)`,
+            impact:'moderate'
+          });
+        }
+      }
+    }
+
+    starCache[cKey]=absences;
+    return absences;
+
+  }catch(e){
+    console.warn('BDL star detection error:',teamName,e.message);
+    starCache[cKey]=[];
+    return[];
+  }
+}
+
+// Penalità da applicare al Consensus basata sulle assenze
+function calcAbsencePenalty(absences){
+  if(!absences||!absences.length)return 0;
+  let penalty=0;
+  absences.forEach(a=>{
+    if(a.impact==='critical')penalty+=0.06;      // -6% per star 25+ PPG
+    else if(a.impact==='high')penalty+=0.04;     // -4% per star 20-25 PPG
+    else if(a.impact==='moderate')penalty+=0.02; // -2% per star 18-20 PPG
+  });
+  return Math.min(penalty,0.10); // max -10%
+}
+
 // ═══ DATA ANALYSIS ═══
 function analyzeTeam(games,teamId){
   const fin=games.sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -575,6 +693,8 @@ Elo: ${Math.round(S.elo[game.teams.home.id]||1500)} vs ${Math.round(S.elo[game.t
 Consensus AI: ${hName} ${pct(pred.home*100)} — ${aName} ${pct(pred.away*100)}
 Score previsto: ${pred.predH}-${pred.predA} | Linea O/U: ${fm(pred.line,1)} (Over ${pct(pred.pOver)})
 H2H: ${pred.h2h.n} partite, ${hName} vinte ${pred.h2h.w}
+${game._starAbsences?.home?.length?'ATTENZIONE - Star assenti '+hName+': '+game._starAbsences.home.map(a=>a.name+' '+fm(a.ppg,1)+' PPG').join(', '):''}
+${game._starAbsences?.away?.length?'ATTENZIONE - Star assenti '+aName+': '+game._starAbsences.away.map(a=>a.name+' '+fm(a.ppg,1)+' PPG').join(', '):''}
 
 Rispondi in italiano con:
 1. Pronostico principale (1 o 2 e perché, max 2 frasi)
@@ -660,12 +780,17 @@ async function analyzeMatch(game){
   const lid=S.league.id,ssn=S.league.season;
 
   try{
-    // Load data in parallel
-    const [hGames,aGames,bref]=await Promise.all([
+    // Load data in parallel (include BDL star check for NBA)
+    const [hGames,aGames,bref,hStarAbs,aStarAbs]=await Promise.all([
       loadTeamGames(hid,lid,ssn),
       loadTeamGames(aid,lid,ssn),
       lid===12?loadBRefAdvanced():Promise.resolve(null),
+      lid===12?detectStarAbsences(game.teams.home.name):Promise.resolve([]),
+      lid===12?detectStarAbsences(game.teams.away.name):Promise.resolve([]),
     ]);
+
+    // Store star absences on game
+    game._starAbsences={home:hStarAbs||[],away:aStarAbs||[]};
 
     // Build Elo from all loaded games
     const allGames=[...(hGames||[]),...(aGames||[])];
@@ -686,6 +811,24 @@ async function analyzeMatch(game){
 
     // Run prediction engine
     const pred=predict(hD,aD,game,bref);
+
+    // Apply star absence penalty (NBA only)
+    const hAbsPenalty=calcAbsencePenalty(game._starAbsences?.home);
+    const aAbsPenalty=calcAbsencePenalty(game._starAbsences?.away);
+    if(hAbsPenalty>0||aAbsPenalty>0){
+      pred.home=clamp(.10,pred.home-hAbsPenalty+aAbsPenalty,.90);
+      pred.away=clamp(.10,pred.away-aAbsPenalty+hAbsPenalty,.90);
+      // Re-normalize
+      const t2=pred.home+pred.away;pred.home/=t2;pred.away/=t2;
+      // Update winner
+      pred.winner=pred.home>=pred.away?'home':'away';
+      pred.winnerProb=Math.max(pred.home,pred.away);
+      pred.confidence=Math.abs(pred.home-pred.away)>.15?'high':Math.abs(pred.home-pred.away)>.08?'medium':'low';
+      // Add star flags
+      if(hAbsPenalty>0)pred.flags.push({team:'home',type:'star',label:`🚨 Star assente: ${game._starAbsences.home.map(a=>a.name+' ('+fm(a.ppg,1)+' PPG)').join(', ')}`});
+      if(aAbsPenalty>0)pred.flags.push({team:'away',type:'star',label:`🚨 Star assente: ${game._starAbsences.away.map(a=>a.name+' ('+fm(a.ppg,1)+' PPG)').join(', ')}`});
+    }
+
     game._pred=pred;
 
     // Find real odds
@@ -1113,6 +1256,38 @@ function renderAnalysis(){
   h+=sigRow('📈','Over Rate',pct(hD.overRate*100),pct(aD.overRate*100),
     hD.overRate>.55?'var(--green)':'var(--text-g)',
     aD.overRate>.55?'var(--green)':'var(--text-g)');
+
+  // Star Player Absences (NBA only, from BallDontLie)
+  const allAbs=[...(g._starAbsences?.home||[]),...(g._starAbsences?.away||[])];
+  if(allAbs.length>0){
+    h+=`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+      <div style="font-size:.7rem;font-weight:700;color:var(--red);margin-bottom:6px">🚨 STAR PLAYER ASSENTI (BallDontLie)</div>`;
+    (g._starAbsences?.home||[]).forEach(a=>{
+      const impColor=a.impact==='critical'?'var(--red)':a.impact==='high'?'var(--gold)':'var(--text-g)';
+      h+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
+        <div style="width:8px;height:8px;border-radius:50%;background:${impColor};flex-shrink:0"></div>
+        <div style="font-size:.72rem;color:var(--accent);font-weight:600">${g.teams.home.name.split(' ').pop()}</div>
+        <div style="font-size:.72rem;color:var(--text)">${a.name}</div>
+        <div style="font-family:var(--mono);font-size:.68rem;color:${impColor};margin-left:auto">${fm(a.ppg,1)} PPG</div>
+        <div style="font-size:.6rem;padding:1px 6px;border-radius:3px;background:${impColor}20;color:${impColor};font-weight:600">${a.impact==='critical'?'CRITICO':a.impact==='high'?'ALTO':'MOD'}</div>
+      </div>`;
+    });
+    (g._starAbsences?.away||[]).forEach(a=>{
+      const impColor=a.impact==='critical'?'var(--red)':a.impact==='high'?'var(--gold)':'var(--text-g)';
+      h+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
+        <div style="width:8px;height:8px;border-radius:50%;background:${impColor};flex-shrink:0"></div>
+        <div style="font-size:.72rem;color:var(--blue);font-weight:600">${g.teams.away.name.split(' ').pop()}</div>
+        <div style="font-size:.72rem;color:var(--text)">${a.name}</div>
+        <div style="font-family:var(--mono);font-size:.68rem;color:${impColor};margin-left:auto">${fm(a.ppg,1)} PPG</div>
+        <div style="font-size:.6rem;padding:1px 6px;border-radius:3px;background:${impColor}20;color:${impColor};font-weight:600">${a.impact==='critical'?'CRITICO':a.impact==='high'?'ALTO':'MOD'}</div>
+      </div>`;
+    });
+    h+='</div>';
+  }else if(S.league?.id===12){
+    h+=`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+      <div style="font-size:.68rem;color:var(--green)">✅ Nessuna star player assente rilevata (BallDontLie)</div>
+    </div>`;
+  }
 
   h+='</div></div>';
 
